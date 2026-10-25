@@ -48,13 +48,39 @@ Future<String> extractText(String path) async {
   return text;
 }
 
-String _decode(Uint8List bytes) {
-  // Strip a UTF-8 byte-order mark; tolerate odd encodings.
-  var b = bytes;
+String _decode(Uint8List bytes) => decodeText(bytes);
+
+/// Text files from Windows can be UTF-8 (with or without a byte-order mark)
+/// or UTF-16 (Notepad's "Unicode", older PowerShell output).
+String decodeText(Uint8List b) {
   if (b.length >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF) {
-    b = b.sublist(3);
+    return utf8.decode(b.sublist(3), allowMalformed: true);
   }
-  return utf8.decode(b, allowMalformed: true);
+  bool? littleEndian;
+  var start = 0;
+  if (b.length >= 2 && b[0] == 0xFF && b[1] == 0xFE) {
+    littleEndian = true;
+    start = 2;
+  } else if (b.length >= 2 && b[0] == 0xFE && b[1] == 0xFF) {
+    littleEndian = false;
+    start = 2;
+  } else if (b.length >= 8) {
+    // No marker: UTF-16 still shows up as lots of zero bytes on one side.
+    final n = b.length.clamp(0, 2000) & ~1;
+    var evenZeros = 0, oddZeros = 0;
+    for (var i = 0; i < n; i += 2) {
+      if (b[i] == 0) evenZeros++;
+      if (b[i + 1] == 0) oddZeros++;
+    }
+    if (oddZeros > n / 4 && evenZeros == 0) littleEndian = true;
+    if (evenZeros > n / 4 && oddZeros == 0) littleEndian = false;
+  }
+  if (littleEndian == null) return utf8.decode(b, allowMalformed: true);
+  final units = <int>[];
+  for (var i = start; i + 1 < b.length; i += 2) {
+    units.add(littleEndian ? b[i] | (b[i + 1] << 8) : (b[i] << 8) | b[i + 1]);
+  }
+  return String.fromCharCodes(units);
 }
 
 /// Plain text. Blank lines separate paragraphs. If the file has no blank

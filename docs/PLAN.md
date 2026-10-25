@@ -49,7 +49,11 @@ mistake was crystal clear and memorable.
 | IndexTTS-2 | Strongest emotion control (separate voice and emotion) | Custom, non-commercial | Not tested. |
 | Orpheus 3B | Inline tags (`<laugh>`, `<sigh>`) | Open | Not tested. |
 
-Results of the listening test go here once Phil has listened.
+**Listening test result (Phil, 2026-10-25), same passages on all three:**
+- **Straight narration (release notes): Chatterbox** was best.
+- **Drama (AMARANTH cast scene): Qwen3-TTS VoiceDesign** was the clear winner: best variety of
+  voices, best emotion and range.
+- So: Chatterbox renders ordinary documents; Qwen renders cast documents.
 
 ## Version 1 (basic)
 

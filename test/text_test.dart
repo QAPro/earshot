@@ -108,6 +108,31 @@ void main() {
     });
   });
 
+  group('text encodings', () {
+    const src = 'Héllo — world.\nLine two.';
+    List<int> u16(String s, {required bool le, bool bom = true}) => [
+      if (bom) ...(le ? [0xFF, 0xFE] : [0xFE, 0xFF]),
+      ...s.codeUnits.expand(
+        (c) => le ? [c & 0xFF, c >> 8] : [c >> 8, c & 0xFF],
+      ),
+    ];
+    test('UTF-8 with and without a byte-order mark', () {
+      expect(decodeText(Uint8List.fromList(utf8.encode(src))), src);
+      expect(
+        decodeText(Uint8List.fromList([0xEF, 0xBB, 0xBF, ...utf8.encode(src)])),
+        src,
+      );
+    });
+    test('UTF-16 little/big endian, with or without a marker', () {
+      expect(decodeText(Uint8List.fromList(u16(src, le: true))), src);
+      expect(decodeText(Uint8List.fromList(u16(src, le: false))), src);
+      expect(
+        decodeText(Uint8List.fromList(u16(src, le: true, bom: false))),
+        src,
+      );
+    });
+  });
+
   group('pdf lines', () {
     test('joins wrapped lines, mends hyphens, drops page numbers', () {
       final text = pdfLinesToText([

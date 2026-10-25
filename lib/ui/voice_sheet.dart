@@ -4,6 +4,12 @@ import '../audio/reader_handler.dart';
 import '../services/library.dart';
 import '../voices.dart';
 
+/// Set by the GitHub build (--dart-define=EARSHOT_BUILD=N); "dev" locally.
+const earshotBuild = String.fromEnvironment(
+  'EARSHOT_BUILD',
+  defaultValue: 'dev',
+);
+
 Future<void> showVoiceSheet(BuildContext context, ReaderHandler h) {
   return showModalBottomSheet(
     context: context,
@@ -129,6 +135,15 @@ class _VoiceSheetState extends State<_VoiceSheet> {
           child: Text('More voices', style: t.titleMedium),
         ),
         ...more.map(tile),
+        const SizedBox(height: 16),
+        Center(
+          child: Text(
+            'Earshot build $earshotBuild',
+            style: t.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ),
+        ),
       ],
     );
   }
