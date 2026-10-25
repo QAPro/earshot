@@ -1,5 +1,7 @@
 package tech.baileyenterprises.earshot
 
+import android.app.ActivityManager
+import android.app.ApplicationExitInfo
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -27,6 +29,8 @@ class MainActivity : AudioServiceActivity() {
                     dartReady = true
                     result.success(pending)
                     pending = null
+                } else if (call.method == "getLastCrash") {
+                    result.success(try { lastCrash() } catch (e: Exception) { null })
                 } else {
                     result.notImplemented()
                 }
@@ -96,5 +100,29 @@ class MainActivity : AudioServiceActivity() {
         val out = File(dir, firstLine.replace(Regex("[\\\\/:*?\"<>|]"), "_") + ".txt")
         out.writeText(text)
         return out.absolutePath
+    }
+
+    /** If the app's previous run ended in a crash, describe it (once). */
+    private fun lastCrash(): String? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        val am = getSystemService(ActivityManager::class.java)
+        val info = am.getHistoricalProcessExitReasons(packageName, 0, 1).firstOrNull() ?: return null
+        val prefs = getSharedPreferences("earshot_native", MODE_PRIVATE)
+        if (prefs.getLong("seenExit", 0L) == info.timestamp) return null
+        prefs.edit().putLong("seenExit", info.timestamp).apply()
+        val reason = when (info.reason) {
+            ApplicationExitInfo.REASON_CRASH -> "crash"
+            ApplicationExitInfo.REASON_CRASH_NATIVE -> "native crash"
+            ApplicationExitInfo.REASON_ANR -> "not responding"
+            ApplicationExitInfo.REASON_LOW_MEMORY -> "out of memory"
+            else -> return null
+        }
+        val trace = try {
+            info.traceInputStream?.bufferedReader()?.use { it.readText().take(6000) }
+        } catch (e: Exception) { null }
+        val build = packageManager.getPackageInfo(packageName, 0).let { "${it.versionName} (${it.longVersionCode})" }
+        return "Earshot $build, Android ${Build.VERSION.RELEASE}, ${Build.MODEL}\n" +
+            "Exit: $reason — ${info.description ?: "no description"}\n" +
+            "At: ${java.util.Date(info.timestamp)}" + (trace?.let { "\n\n$it" } ?: "")
     }
 }

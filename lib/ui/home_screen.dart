@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../app_state.dart';
@@ -26,6 +27,9 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    widget.state.lastCrash().then((report) {
+      if (report != null && mounted) _showCrash(report);
+    });
     widget.state.listenForShares(
       (path) =>
           _import(p.basename(path), File(path).openRead(), deleteAfter: path),
@@ -72,6 +76,31 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     if (mounted) setState(() {});
   }
+
+  Future<void> _showCrash(String report) => showDialog<void>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Earshot closed unexpectedly last time'),
+      content: SingleChildScrollView(
+        child: SelectableText(report, style: const TextStyle(fontSize: 12)),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(c),
+          child: const Text('Close'),
+        ),
+        FilledButton.icon(
+          icon: const Icon(Icons.copy),
+          label: const Text('Copy'),
+          onPressed: () {
+            Clipboard.setData(ClipboardData(text: report));
+            Navigator.pop(c);
+            _snack('Copied. Paste it to Claude.');
+          },
+        ),
+      ],
+    ),
+  );
 
   void _snack(String msg) {
     if (!mounted) return;

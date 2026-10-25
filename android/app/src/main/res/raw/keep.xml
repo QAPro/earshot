@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- These icons are looked up by name at runtime (audio_service's playback
+     notification), so the release build's resource shrinker can't see they're
+     used. Without them Android rejects the notification and kills the app
+     the moment playback starts. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_earshot,@drawable/audio_service_*" />
