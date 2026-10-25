@@ -52,4 +52,8 @@ a different key means Android refuses the update and Phil must uninstall (losing
   side-project rules (`~/ExecAssist/.claude/rules/side-project-workflow.md`).
 - Voice ids/speaker ids are in `lib/voices.dart`; the first eight are the ones Phil approved.
 - British voices need lexicon `lexicon-gb-en.txt` and eSpeak language `en` (not `en-gb`, which fails).
+- **Android resources referenced by name at runtime must be listed in `res/raw/keep.xml`.** The
+  release shrinker deletes them otherwise, and a missing notification icon kills the app on Play
+  (issue #1). Check with `aapt2 dump resources <apk> | grep <name>`.
+- Phil can't send logcat. A crash shows up on the next launch with a Copy button; ask him to paste it.
 - Pin dependency versions; prefer releases at least two weeks old.
