@@ -341,7 +341,10 @@ class ReaderHandler extends BaseAudioHandler {
           segments[i + 1].paragraph != segments[i].paragraph;
       if (endsParagraph) {
         _segmentDone = Completer<void>();
-        final ms = settings.pauses.paragraphMs / settings.speed;
+        final cast = segments[i].voiceId != null || segments[i].label != null;
+        final ms =
+            (cast ? settings.pauses.castLineMs : settings.pauses.paragraphMs) /
+            settings.speed;
         final timer = Timer(Duration(milliseconds: ms.round()), _finishSegment);
         await _segmentDone!.future;
         timer.cancel();

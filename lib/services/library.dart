@@ -153,11 +153,16 @@ class Library {
 
 /// How long to pause at punctuation and between paragraphs.
 enum Pauses {
-  short('Short', 0.2, 150),
-  natural('Natural', 0.6, 450),
-  long('Long', 1.0, 800);
+  short('Short', 0.2, 150, 40),
+  natural('Natural', 0.6, 450, 120),
+  long('Long', 1.0, 800, 250);
 
-  const Pauses(this.label, this.silenceScale, this.paragraphMs);
+  const Pauses(
+    this.label,
+    this.silenceScale,
+    this.paragraphMs,
+    this.castLineMs,
+  );
   final String label;
 
   /// Kokoro/sherpa-onnx silence scale: stretches pauses at commas, colons,
@@ -166,6 +171,10 @@ enum Pauses {
 
   /// Extra pause after the last sentence of a paragraph or heading.
   final int paragraphMs;
+
+  /// In a cast document every line is a paragraph, so lines follow each
+  /// other much more closely; `[pause]` lines do the dramatic waiting.
+  final int castLineMs;
 }
 
 class Settings {
