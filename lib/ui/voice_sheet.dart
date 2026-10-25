@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../audio/reader_handler.dart';
+import '../services/library.dart';
 import '../voices.dart';
 
 Future<void> showVoiceSheet(BuildContext context, ReaderHandler h) {
@@ -87,6 +88,35 @@ class _VoiceSheetState extends State<_VoiceSheet> {
           label: '${_speed.toStringAsFixed(2)}×',
           onChanged: (s) => setState(() => _speed = s),
           onChangeEnd: widget.h.setSpeed,
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+          child: Text('Pauses at punctuation', style: t.titleMedium),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: SegmentedButton<Pauses>(
+            segments: [
+              for (final p in Pauses.values)
+                ButtonSegment(value: p, label: Text(p.label)),
+            ],
+            selected: {widget.h.settings.pauses},
+            onSelectionChanged: (sel) async {
+              await widget.h.setPauses(sel.first);
+              if (mounted) setState(() {});
+            },
+          ),
+        ),
+        SwitchListTile(
+          title: const Text('Continue to the next document'),
+          subtitle: const Text(
+            'When one ends, start the one below it in your list.',
+          ),
+          value: widget.h.settings.continueToNext,
+          onChanged: (on) async {
+            await widget.h.setContinueToNext(on);
+            if (mounted) setState(() {});
+          },
         ),
         const Divider(),
         Padding(

@@ -42,6 +42,9 @@ class ReaderHandler extends BaseAudioHandler {
   final error = ValueNotifier<String?>(null);
   final voice = ValueNotifier<Voice>(voices.first);
 
+  /// Bumps whenever a different document is opened, so screens can rebuild.
+  final docVersion = ValueNotifier<int>(0);
+
   Doc? doc;
   List<Segment> segments = const [];
 
@@ -89,6 +92,7 @@ class ReaderHandler extends BaseAudioHandler {
     index.value = d.position >= segs.length ? 0 : d.position;
     error.value = null;
     await library.touch(d);
+    docVersion.value++;
     _publishItem();
     _publishState();
   }
@@ -179,6 +183,47 @@ class ReaderHandler extends BaseAudioHandler {
     }
   }
 
+  Future<void> toStart() => jumpTo(0);
+
+  /// To the start of the last paragraph.
+  Future<void> toEnd() async {
+    if (segments.isEmpty) return;
+    final last = segments.last.paragraph;
+    await jumpTo(segments.indexWhere((s) => s.paragraph == last));
+  }
+
+  Future<bool> nextDocument() => _switchDocument(1);
+  Future<bool> previousDocument() => _switchDocument(-1);
+
+  /// Opens the document below (+1) or above (-1) in the library, keeping
+  /// playback going if it was. Returns false if there isn't one.
+  Future<bool> _switchDocument(int step, {bool fromStart = false}) async {
+    final d = doc;
+    if (d == null) return false;
+    final next = library.neighbour(d, step);
+    if (next == null) return false;
+    final wasPlaying = playing.value;
+    if (fromStart) next.position = 0;
+    await open(next, await library.segmentsFor(next));
+    if (wasPlaying) await play();
+    return true;
+  }
+
+  Future<void> setPauses(Pauses pauses) async {
+    if (pauses == settings.pauses) return;
+    final wasPlaying = playing.value;
+    await _stopPlayback();
+    settings.pauses = pauses;
+    await settings.save();
+    _clearAudio();
+    if (wasPlaying) unawaited(_loop(++_run));
+  }
+
+  Future<void> setContinueToNext(bool on) async {
+    settings.continueToNext = on;
+    await settings.save();
+  }
+
   @override
   Future<void> setSpeed(double speed) async {
     settings.speed = speed;
@@ -204,6 +249,7 @@ class ReaderHandler extends BaseAudioHandler {
         'Hi, I\'m ${v.name}. This is how I\'ll sound reading your documents.',
         v,
         p.join(dir, 'preview_${v.id}.wav'),
+        silenceScale: settings.pauses.silenceScale,
       );
       await _previewPlayer.setFilePath(path);
       await _previewPlayer.setSpeed(settings.speed);
@@ -219,6 +265,20 @@ class ReaderHandler extends BaseAudioHandler {
     while (run == _run && playing.value) {
       final i = index.value;
       if (i >= segments.length) {
+        doc?.position = segments.length; // finished
+        unawaited(library.save());
+        if (settings.continueToNext) {
+          // Keep going with the next document in the list.
+          unawaited(
+            _switchDocument(1, fromStart: true).then((moved) {
+              if (!moved) {
+                playing.value = false;
+                _publishState();
+              }
+            }),
+          );
+          return;
+        }
         playing.value = false;
         index.value = segments.length - 1;
         doc?.position = segments.length; // finished
@@ -264,6 +324,18 @@ class ReaderHandler extends BaseAudioHandler {
         await _segmentDone!.future;
         if (run != _run) return;
       }
+      // A longer pause where a paragraph or heading ends.
+      final endsParagraph =
+          i + 1 >= segments.length ||
+          segments[i + 1].paragraph != segments[i].paragraph;
+      if (endsParagraph) {
+        _segmentDone = Completer<void>();
+        final ms = settings.pauses.paragraphMs / settings.speed;
+        final timer = Timer(Duration(milliseconds: ms.round()), _finishSegment);
+        await _segmentDone!.future;
+        timer.cancel();
+        if (run != _run) return;
+      }
       index.value = i + 1;
       if (index.value < segments.length) _savePosition();
     }
@@ -290,7 +362,8 @@ class ReaderHandler extends BaseAudioHandler {
 
   // ------------------------------------------------------ audio generation
 
-  String _key(int i) => '${doc?.id}|${voice.value.id}|$i';
+  String _key(int i) =>
+      '${doc?.id}|${voice.value.id}|${settings.pauses.name}|$i';
 
   Future<String> _audioFor(int i) {
     final k = _key(i);
@@ -330,6 +403,7 @@ class ReaderHandler extends BaseAudioHandler {
           text,
           v,
           p.join(dir, '${k.replaceAll('|', '_')}.wav'),
+          silenceScale: settings.pauses.silenceScale,
         );
       }
       _done[k] = path;
@@ -349,7 +423,7 @@ class ReaderHandler extends BaseAudioHandler {
 
   /// Drops audio that's behind us or for another voice/doc.
   void _evict() {
-    final prefix = '${doc?.id}|${voice.value.id}|';
+    final prefix = '${doc?.id}|${voice.value.id}|${settings.pauses.name}|';
     final keep = index.value - 2;
     _done.removeWhere((k, path) {
       final stale =

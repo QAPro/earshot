@@ -43,12 +43,17 @@ class TtsWorker {
   }
 
   /// Speaks [text] with [voice] into a WAV file at [outPath].
-  Future<String> synth(String text, Voice voice, String outPath) async {
+  Future<String> synth(
+    String text,
+    Voice voice,
+    String outPath, {
+    double silenceScale = 0.6,
+  }) async {
     await start();
     final id = _nextId++;
     final c = Completer<String>();
     _pending[id] = c;
-    _send!.send([id, text, voice.sid, voice.british, outPath]);
+    _send!.send([id, text, voice.sid, voice.british, outPath, silenceScale]);
     return c.future;
   }
 }
@@ -72,6 +77,7 @@ void _main(List<dynamic> args) {
       final sid = m[2] as int;
       final british = m[3] as bool;
       final out = m[4] as String;
+      final silenceScale = m[5] as double;
       if (tts == null || loadedBritish != british) {
         tts?.free();
         tts = sherpa.OfflineTts(
@@ -95,7 +101,14 @@ void _main(List<dynamic> args) {
         );
         loadedBritish = british;
       }
-      final audio = tts!.generate(text: text, sid: sid, speed: 1.0);
+      final audio = tts!.generateWithConfig(
+        text: text,
+        config: sherpa.OfflineTtsGenerationConfig(
+          sid: sid,
+          speed: 1.0,
+          silenceScale: silenceScale,
+        ),
+      );
       if (audio.samples.isEmpty) throw Exception('No audio generated');
       final ok = sherpa.writeWave(
         filename: out,

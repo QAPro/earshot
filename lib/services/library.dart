@@ -78,7 +78,17 @@ class Library {
     );
   }
 
-  void _sort() => docs.sort((a, b) => b.lastOpened.compareTo(a.lastOpened));
+  /// Stable order: newest added first (ids are creation timestamps), so
+  /// "next document" always means the one below in the list.
+  void _sort() =>
+      docs.sort((a, b) => int.parse(b.id).compareTo(int.parse(a.id)));
+
+  /// The document below [d] in the list (+1) or above it (-1), if any.
+  Doc? neighbour(Doc d, int step) {
+    final i = docs.indexWhere((x) => x.id == d.id);
+    final j = i + step;
+    return i < 0 || j < 0 || j >= docs.length ? null : docs[j];
+  }
 
   static Future<Directory> _dir() async {
     final base = await getApplicationDocumentsDirectory();
@@ -141,22 +151,47 @@ class Library {
   }
 }
 
+/// How long to pause at punctuation and between paragraphs.
+enum Pauses {
+  short('Short', 0.2, 150),
+  natural('Natural', 0.6, 450),
+  long('Long', 1.0, 800);
+
+  const Pauses(this.label, this.silenceScale, this.paragraphMs);
+  final String label;
+
+  /// Kokoro/sherpa-onnx silence scale: stretches pauses at commas, colons,
+  /// sentence ends. 0.2 (the library default) races through punctuation.
+  final double silenceScale;
+
+  /// Extra pause after the last sentence of a paragraph or heading.
+  final int paragraphMs;
+}
+
 class Settings {
   static const _voiceKey = 'voice';
   static const _speedKey = 'speed';
+  static const _pausesKey = 'pauses';
+  static const _continueKey = 'continueToNext';
 
   String voiceId = 'af_heart';
   double speed = 1.0;
+  Pauses pauses = Pauses.natural;
+  bool continueToNext = false;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     voiceId = prefs.getString(_voiceKey) ?? voiceId;
     speed = prefs.getDouble(_speedKey) ?? speed;
+    pauses = Pauses.values.asNameMap()[prefs.getString(_pausesKey)] ?? pauses;
+    continueToNext = prefs.getBool(_continueKey) ?? continueToNext;
   }
 
   Future<void> save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_voiceKey, voiceId);
     await prefs.setDouble(_speedKey, speed);
+    await prefs.setString(_pausesKey, pauses.name);
+    await prefs.setBool(_continueKey, continueToNext);
   }
 }

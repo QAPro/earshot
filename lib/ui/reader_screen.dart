@@ -18,16 +18,49 @@ class ReaderScreen extends StatefulWidget {
 
 class _ReaderScreenState extends State<ReaderScreen> {
   late final ReaderHandler h = widget.state.handler;
-  late final List<_Para> _paras = _group(h.segments);
-  late final List<GlobalKey> _keys = List.generate(
-    _paras.length,
-    (_) => GlobalKey(),
-  );
+  late List<_Para> _paras;
+  late List<GlobalKey> _keys;
+  final _scroll = ScrollController();
   bool _follow = true;
+
+  void _load() {
+    _paras = _group(h.segments);
+    _keys = List.generate(_paras.length, (_) => GlobalKey());
+  }
+
+  /// Another document was opened (next/previous document).
+  void _onDocChanged() {
+    if (!mounted) return;
+    setState(() {
+      _load();
+      _follow = true;
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _scrollToCurrent(animate: false),
+    );
+  }
+
+  Future<void> _switchDoc(bool next) async {
+    final moved = next ? await h.nextDocument() : await h.previousDocument();
+    if (!moved && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            next
+                ? 'This is the last document in your list.'
+                : 'This is the first document in your list.',
+          ),
+        ),
+      );
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _load();
+    h.docVersion.addListener(_onDocChanged);
     h.index.addListener(_onIndex);
     h.error.addListener(_onError);
     WidgetsBinding.instance.addPostFrameCallback(
@@ -37,8 +70,10 @@ class _ReaderScreenState extends State<ReaderScreen> {
 
   @override
   void dispose() {
+    h.docVersion.removeListener(_onDocChanged);
     h.index.removeListener(_onIndex);
     h.error.removeListener(_onError);
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -117,6 +152,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
               return false;
             },
             child: SingleChildScrollView(
+              controller: _scroll,
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,7 +206,32 @@ class _ReaderScreenState extends State<ReaderScreen> {
                     style: Theme.of(context).textTheme.labelMedium,
                   ),
                 ),
-                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      icon: const Icon(Icons.chevron_left),
+                      label: const Text('Doc'),
+                      onPressed: () => _switchDoc(false),
+                    ),
+                    IconButton(
+                      tooltip: 'Start of document',
+                      icon: const Icon(Icons.vertical_align_top),
+                      onPressed: h.toStart,
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'End of document',
+                      icon: const Icon(Icons.vertical_align_bottom),
+                      onPressed: h.toEnd,
+                    ),
+                    TextButton.icon(
+                      icon: const Icon(Icons.chevron_right),
+                      label: const Text('Doc'),
+                      iconAlignment: IconAlignment.end,
+                      onPressed: () => _switchDoc(true),
+                    ),
+                  ],
+                ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
