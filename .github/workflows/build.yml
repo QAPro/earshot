@@ -1,0 +1,101 @@
+name: Build
+
+# Every push to main: test, build the Android app and the Windows app, and
+# publish both as a GitHub release ("build-N"). Pull requests only test.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FLUTTER_VERSION: 3.47.8
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  android:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Release signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "No signing secrets; using the debug key."; exit 0; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/earshot.jks"
+          printf "storePassword=%s\nkeyPassword=%s\nkeyAlias=earshot\nstoreFile=%s\n" \
+            "$KEY_PASSWORD" "$KEY_PASSWORD" "$RUNNER_TEMP/earshot.jks" > android/key.properties
+      - run: flutter build apk --release --target-platform android-arm64 --build-number ${{ github.run_number }}
+      - run: mv build/app/outputs/flutter-apk/app-release.apk earshot-android.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: earshot-android.apk
+
+  windows:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter build windows --release --build-number ${{ github.run_number }}
+      - run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath earshot-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: earshot-windows.zip
+
+  release:
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" \
+            --repo "${{ github.repository }}" \
+            --target "${{ github.sha }}" \
+            --title "Earshot build ${{ github.run_number }}" \
+            --notes "$(git log -1 --format=%s 2>/dev/null || echo 'Automatic build') — commit ${GITHUB_SHA::7}.
+
+          **Android:** download earshot-android.apk on the phone and open it.
+          **Windows:** download earshot-windows.zip, unzip, run earshot.exe." \
+            --latest \
+            earshot-android.apk earshot-windows.zip
