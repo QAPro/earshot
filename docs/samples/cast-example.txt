@@ -1,0 +1,17 @@
+---
+voices:
+  Narrator: Michael
+  Ana: Heart
+  Tom: George
+---
+Release night. The office is empty except for two testers and a coffee machine.
+Ana (quietly): Did you run the full suite?
+Tom (calm): Twice. Everything's green.
+Ana: Then why is the login page blank on my phone?
+[pause 1s]
+Tom (breathless, panicked): That's not possible. I checked it an hour ago!
+[Ana, dry] It's possible. It's on my phone.
+[pause 2s]
+[slowly] Somewhere in the building, a deployment finished.
+Tom (whispering): Don't tell anyone.
+Ana (firm): I'm writing it up.

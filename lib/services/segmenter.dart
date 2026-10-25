@@ -2,12 +2,28 @@
 /// for speech.
 library;
 
+import 'cast.dart';
+
 class Segment {
-  const Segment(this.paragraph, this.text);
+  const Segment(
+    this.paragraph,
+    this.text, {
+    this.voiceId,
+    this.delivery = Delivery.plain,
+    this.pauseMs = 0,
+    this.label,
+  });
 
   /// Index of the paragraph this sentence belongs to.
   final int paragraph;
   final String text;
+
+  /// Cast documents only: who speaks it (null = the voice in settings),
+  /// how, an explicit silence, and the speaker name shown before a line.
+  final String? voiceId;
+  final Delivery delivery;
+  final int pauseMs;
+  final String? label;
 }
 
 const _abbreviations = {
@@ -58,6 +74,8 @@ const maxChunk = 320;
 
 /// [text] has one paragraph per block separated by a blank line.
 List<Segment> segment(String text) {
+  final cast = parseCast(text);
+  if (cast != null) return _castSegments(cast);
   final out = <Segment>[];
   final paragraphs = text
       .replaceAll('\r\n', '\n')
@@ -72,6 +90,34 @@ List<Segment> segment(String text) {
       }
     }
     pi++;
+  }
+  return out;
+}
+
+/// Each cast line is its own paragraph; long lines still split by sentence.
+List<Segment> _castSegments(List<CastLine> lines) {
+  final out = <Segment>[];
+  for (var pi = 0; pi < lines.length; pi++) {
+    final l = lines[pi];
+    if (l.pauseMs > 0) {
+      out.add(Segment(pi, '', pauseMs: l.pauseMs));
+      continue;
+    }
+    var first = true;
+    for (final s in splitSentences(l.text.replaceAll(RegExp(r'\s+'), ' '))) {
+      for (final c in _limit(s)) {
+        out.add(
+          Segment(
+            pi,
+            c,
+            voiceId: l.voiceId,
+            delivery: l.delivery,
+            label: first ? l.speaker : null,
+          ),
+        );
+        first = false;
+      }
+    }
   }
   return out;
 }

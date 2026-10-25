@@ -7,25 +7,35 @@ import 'package:earshot/services/segmenter.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Uint8List _docx(String bodyXml) {
-  final xml = '<?xml version="1.0" encoding="UTF-8"?>'
+  final xml =
+      '<?xml version="1.0" encoding="UTF-8"?>'
       '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
       '<w:body>$bodyXml</w:body></w:document>';
-  final a = Archive()..add(ArchiveFile.bytes('word/document.xml', utf8.encode(xml)));
+  final a = Archive()
+    ..add(ArchiveFile.bytes('word/document.xml', utf8.encode(xml)));
   return Uint8List.fromList(ZipEncoder().encode(a));
 }
 
 void main() {
   group('sentences', () {
     test('splits on sentence ends', () {
-      expect(splitSentences('First one. Second one! Third? Yes.'),
-          ['First one.', 'Second one!', 'Third?', 'Yes.']);
+      expect(splitSentences('First one. Second one! Third? Yes.'), [
+        'First one.',
+        'Second one!',
+        'Third?',
+        'Yes.',
+      ]);
     });
 
     test('keeps abbreviations, initials and decimals together', () {
-      expect(splitSentences('See e.g. the guide by J. Smith. Version 2.4 shipped.'),
-          ['See e.g. the guide by J. Smith.', 'Version 2.4 shipped.']);
-      expect(splitSentences('Talk to Dr. Jones about it. Then go.'),
-          ['Talk to Dr. Jones about it.', 'Then go.']);
+      expect(
+        splitSentences('See e.g. the guide by J. Smith. Version 2.4 shipped.'),
+        ['See e.g. the guide by J. Smith.', 'Version 2.4 shipped.'],
+      );
+      expect(splitSentences('Talk to Dr. Jones about it. Then go.'), [
+        'Talk to Dr. Jones about it.',
+        'Then go.',
+      ]);
     });
 
     test('long sentences are cut at a comma, never mid-word', () {
@@ -35,8 +45,10 @@ void main() {
       for (final s in segs) {
         expect(s.text.length, lessThanOrEqualTo(maxChunk));
       }
-      expect(segs.map((s) => s.text).join(' ').replaceAll(RegExp(r'\s+'), ' '),
-          long.replaceAll(RegExp(r'\s+'), ' '));
+      expect(
+        segs.map((s) => s.text).join(' ').replaceAll(RegExp(r'\s+'), ' '),
+        long.replaceAll(RegExp(r'\s+'), ' '),
+      );
     });
 
     test('paragraph numbers follow blank lines', () {
@@ -47,8 +59,10 @@ void main() {
 
   group('speech cleanup', () {
     test('URLs become "link to <site>"', () {
-      expect(forSpeech('Read https://www.example.com/a/b?c=1 now.'),
-          'Read link to example.com now.');
+      expect(
+        forSpeech('Read https://www.example.com/a/b?c=1 now.'),
+        'Read link to example.com now.',
+      );
     });
     test('pure symbols say nothing', () {
       expect(forSpeech('* * *'), '');
@@ -58,23 +72,39 @@ void main() {
 
   group('markdown', () {
     test('headings and list items are their own paragraphs; code skipped', () {
-      final t = markdownText('# Title\nSome **bold** text\nwraps here.\n\n'
-          '- item [one](http://x)\n- item two\n\n```\ncode()\n```\nEnd.');
-      expect(t.split('\n\n'),
-          ['Title', 'Some bold text wraps here.', 'item one', 'item two', 'End.']);
+      final t = markdownText(
+        '# Title\nSome **bold** text\nwraps here.\n\n'
+        '- item [one](http://x)\n- item two\n\n```\ncode()\n```\nEnd.',
+      );
+      expect(t.split('\n\n'), [
+        'Title',
+        'Some bold text wraps here.',
+        'item one',
+        'item two',
+        'End.',
+      ]);
     });
   });
 
   group('docx', () {
     test('one paragraph per w:p, tabs as spaces, deletions dropped', () {
-      final bytes = _docx('<w:p><w:r><w:t>Hello</w:t></w:r><w:r><w:tab/><w:t>world.</w:t></w:r></w:p>'
-          '<w:p><w:del><w:r><w:t>gone</w:t></w:r></w:del><w:r><w:t>Second.</w:t></w:r></w:p>'
-          '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>');
-      expect(docxText(bytes).split('\n\n'), ['Hello world.', 'Second.', 'Cell']);
+      final bytes = _docx(
+        '<w:p><w:r><w:t>Hello</w:t></w:r><w:r><w:tab/><w:t>world.</w:t></w:r></w:p>'
+        '<w:p><w:del><w:r><w:t>gone</w:t></w:r></w:del><w:r><w:t>Second.</w:t></w:r></w:p>'
+        '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>',
+      );
+      expect(docxText(bytes).split('\n\n'), [
+        'Hello world.',
+        'Second.',
+        'Cell',
+      ]);
     });
 
     test('a non-docx file gives a readable error', () {
-      expect(() => docxText(Uint8List.fromList([1, 2, 3])), throwsA(isA<ExtractException>()));
+      expect(
+        () => docxText(Uint8List.fromList([1, 2, 3])),
+        throwsA(isA<ExtractException>()),
+      );
     });
   });
 
@@ -101,7 +131,10 @@ void main() {
         ['A sentence that runs to the bottom of the page and keeps going'],
         ['onto the next page.'],
       ]);
-      expect(text, 'A sentence that runs to the bottom of the page and keeps going onto the next page.');
+      expect(
+        text,
+        'A sentence that runs to the bottom of the page and keeps going onto the next page.',
+      );
     });
   });
 }

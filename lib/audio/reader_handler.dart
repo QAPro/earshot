@@ -324,6 +324,17 @@ class ReaderHandler extends BaseAudioHandler {
         await _segmentDone!.future;
         if (run != _run) return;
       }
+      // An explicit [pause] line in a cast document.
+      if (segments[i].pauseMs > 0) {
+        _segmentDone = Completer<void>();
+        final timer = Timer(
+          Duration(milliseconds: segments[i].pauseMs),
+          _finishSegment,
+        );
+        await _segmentDone!.future;
+        timer.cancel();
+        if (run != _run) return;
+      }
       // A longer pause where a paragraph or heading ends.
       final endsParagraph =
           i + 1 >= segments.length ||
@@ -393,8 +404,12 @@ class ReaderHandler extends BaseAudioHandler {
     if (target == null) return;
     final k = _key(target);
     _inflight = k;
-    final v = voice.value;
-    final text = forSpeech(segments[target].text);
+    final seg = segments[target];
+    // A cast line has its own voice; otherwise the one chosen in settings.
+    final v = seg.voiceId != null ? voiceById(seg.voiceId) : voice.value;
+    final text = forSpeech(seg.text);
+    // A little extra weight on exclamations; Kokoro barely marks them.
+    final emphasis = RegExp(r'!["\u201d\u2019)]*$').hasMatch(text) ? 1.15 : 1.0;
     try {
       var path = '';
       if (text.isNotEmpty) {
@@ -404,6 +419,8 @@ class ReaderHandler extends BaseAudioHandler {
           v,
           p.join(dir, '${k.replaceAll('|', '_')}.wav'),
           silenceScale: settings.pauses.silenceScale,
+          speed: seg.delivery.speed,
+          gain: seg.delivery.gain * emphasis,
         );
       }
       _done[k] = path;

@@ -21,4 +21,6 @@ Get the latest build from [Releases](https://github.com/QAPro/earshot/releases/l
 Open a document (or Share one to Earshot), pick a voice and speed, press play. It keeps
 reading with the screen off; use the lock screen or your headset buttons.
 
+**Several voices in one document** (characters, whispering, shouting, pauses): see [`docs/FORMAT.md`](docs/FORMAT.md).
+
 See [`docs/PLAN.md`](docs/PLAN.md) for what's planned.

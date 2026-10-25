@@ -42,18 +42,30 @@ class TtsWorker {
     _send = await ready.future;
   }
 
-  /// Speaks [text] with [voice] into a WAV file at [outPath].
+  /// Speaks [text] with [voice] into a WAV file at [outPath]. [speed] and
+  /// [gain] (loudness) come from a cast line's delivery.
   Future<String> synth(
     String text,
     Voice voice,
     String outPath, {
     double silenceScale = 0.6,
+    double speed = 1.0,
+    double gain = 1.0,
   }) async {
     await start();
     final id = _nextId++;
     final c = Completer<String>();
     _pending[id] = c;
-    _send!.send([id, text, voice.sid, voice.british, outPath, silenceScale]);
+    _send!.send([
+      id,
+      text,
+      voice.sid,
+      voice.british,
+      outPath,
+      silenceScale,
+      speed,
+      gain,
+    ]);
     return c.future;
   }
 }
@@ -66,8 +78,30 @@ void _main(List<dynamic> args) {
   reply.send(inbox.sendPort);
 
   sherpa.initBindings();
-  sherpa.OfflineTts? tts;
-  bool? loadedBritish;
+  // One engine per accent, both kept loaded, so a cast mixing US and UK
+  // voices doesn't reload the model between lines.
+  final engines = <bool, sherpa.OfflineTts>{};
+
+  sherpa.OfflineTts engine(bool british) =>
+      engines[british] ??= sherpa.OfflineTts(
+        sherpa.OfflineTtsConfig(
+          model: sherpa.OfflineTtsModelConfig(
+            kokoro: sherpa.OfflineTtsKokoroModelConfig(
+              model: '$dir/model.onnx',
+              voices: '$dir/voices.bin',
+              tokens: '$dir/tokens.txt',
+              dataDir: '$dir/espeak-ng-data',
+              lexicon: british
+                  ? '$dir/lexicon-gb-en.txt'
+                  : '$dir/lexicon-us-en.txt',
+              // eSpeak calls British English plain "en".
+              lang: british ? 'en' : 'en-us',
+            ),
+            numThreads: threads,
+            debug: false,
+          ),
+        ),
+      );
 
   inbox.listen((msg) {
     final m = msg as List;
@@ -78,41 +112,26 @@ void _main(List<dynamic> args) {
       final british = m[3] as bool;
       final out = m[4] as String;
       final silenceScale = m[5] as double;
-      if (tts == null || loadedBritish != british) {
-        tts?.free();
-        tts = sherpa.OfflineTts(
-          sherpa.OfflineTtsConfig(
-            model: sherpa.OfflineTtsModelConfig(
-              kokoro: sherpa.OfflineTtsKokoroModelConfig(
-                model: '$dir/model.onnx',
-                voices: '$dir/voices.bin',
-                tokens: '$dir/tokens.txt',
-                dataDir: '$dir/espeak-ng-data',
-                lexicon: british
-                    ? '$dir/lexicon-gb-en.txt'
-                    : '$dir/lexicon-us-en.txt',
-                // eSpeak calls British English plain "en".
-                lang: british ? 'en' : 'en-us',
-              ),
-              numThreads: threads,
-              debug: false,
-            ),
-          ),
-        );
-        loadedBritish = british;
-      }
-      final audio = tts!.generateWithConfig(
+      final speed = m[6] as double;
+      final gain = m[7] as double;
+      final audio = engine(british).generateWithConfig(
         text: text,
         config: sherpa.OfflineTtsGenerationConfig(
           sid: sid,
-          speed: 1.0,
+          speed: speed,
           silenceScale: silenceScale,
         ),
       );
       if (audio.samples.isEmpty) throw Exception('No audio generated');
+      final samples = audio.samples;
+      if (gain != 1.0) {
+        for (var k = 0; k < samples.length; k++) {
+          samples[k] = (samples[k] * gain).clamp(-0.99, 0.99);
+        }
+      }
       final ok = sherpa.writeWave(
         filename: out,
-        samples: audio.samples,
+        samples: samples,
         sampleRate: audio.sampleRate,
       );
       if (!ok) throw Exception('Could not write audio file');

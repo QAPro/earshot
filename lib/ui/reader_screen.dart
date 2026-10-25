@@ -81,7 +81,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
     final out = <_Para>[];
     for (var i = 0; i < segs.length; i++) {
       if (out.isEmpty || out.last.paragraph != segs[i].paragraph) {
-        out.add(_Para(segs[i].paragraph, i));
+        out.add(_Para(segs[i].paragraph, i, label: segs[i].label));
       }
       out.last.texts.add(segs[i].text);
     }
@@ -272,8 +272,9 @@ class _ReaderScreenState extends State<ReaderScreen> {
 }
 
 class _Para {
-  _Para(this.paragraph, this.first);
+  _Para(this.paragraph, this.first, {this.label});
   final int paragraph;
+  final String? label; // cast documents: who's speaking
   final int first; // index of its first sentence
   final texts = <String>[];
 }
@@ -340,9 +341,17 @@ class _ParagraphTextState extends State<_ParagraphText> {
     return Text.rich(
       TextSpan(
         children: [
+          if (widget.para.label != null)
+            TextSpan(
+              text: '${widget.para.label}: ',
+              style: base.copyWith(fontWeight: FontWeight.bold),
+            ),
           for (var k = 0; k < widget.para.texts.length; k++)
             TextSpan(
-              text: '${widget.para.texts[k]} ',
+              // An empty sentence is a [pause] line in a cast document.
+              text: widget.para.texts[k].isEmpty
+                  ? '· · ·'
+                  : '${widget.para.texts[k]} ',
               style: k == _active ? hl : base,
               recognizer: _recognizers[k],
             ),

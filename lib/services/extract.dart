@@ -11,6 +11,8 @@ import 'package:path/path.dart' as p;
 import 'package:pdfrx/pdfrx.dart';
 import 'package:xml/xml.dart';
 
+import 'cast.dart';
+
 const supportedExtensions = ['pdf', 'docx', 'txt', 'md', 'markdown', 'text'];
 
 class ExtractException implements Exception {
@@ -30,7 +32,9 @@ Future<String> extractText(String path) async {
       text = docxText(await File(path).readAsBytes());
     case 'md':
     case 'markdown':
-      text = markdownText(_decode(await File(path).readAsBytes()));
+      final raw = _decode(await File(path).readAsBytes());
+      // A cast document keeps its lines exactly as written.
+      text = hasCastHeader(raw) ? raw : markdownText(raw);
     default:
       text = plainText(_decode(await File(path).readAsBytes()));
   }
