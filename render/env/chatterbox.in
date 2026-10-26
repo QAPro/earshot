@@ -1,0 +1,4 @@
+chatterbox-tts==0.1.7
+torch==2.8.0
+torchaudio==2.8.0
+setuptools==75.8.0
