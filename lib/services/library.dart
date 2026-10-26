@@ -22,6 +22,8 @@ class Doc {
     required this.total,
     this.position = 0,
     this.audioPath,
+    this.chars = 0,
+    this.durationMs,
     DateTime? lastOpened,
   }) : lastOpened = lastOpened ?? DateTime.now();
 
@@ -36,6 +38,37 @@ class Doc {
   /// textPath then holds the recording's script with sentence timings.
   final String? audioPath;
   bool get recorded => audioPath != null;
+
+  /// Length of the text, for estimating listening time.
+  int chars;
+
+  /// Recordings only: exact length of the audio.
+  final int? durationMs;
+
+  bool get finished => total > 0 && position >= total;
+  bool get started => position > 0 && !finished;
+
+  /// Kokoro reads about 13 characters a second at 1× with natural pauses
+  /// (measured 2026-10-25). Recordings know their length exactly.
+  Duration get length => durationMs != null
+      ? Duration(milliseconds: durationMs!)
+      : Duration(milliseconds: (chars / 13 * 1000).round());
+
+  /// Roughly how long is left at [speed].
+  Duration timeLeft(double speed) => Duration(
+    milliseconds: (length.inMilliseconds * (1 - progress) / speed).round(),
+  );
+
+  String get kindLabel {
+    if (recorded) return 'Storyteller';
+    return switch (p.extension(filePath).toLowerCase()) {
+      '.pdf' => 'PDF',
+      '.docx' => 'Word',
+      '.md' || '.markdown' => 'Markdown',
+      _ => 'Text',
+    };
+  }
+
   DateTime lastOpened;
 
   double get progress => total == 0 ? 0 : (position / total).clamp(0, 1);
@@ -48,6 +81,8 @@ class Doc {
     'total': total,
     'position': position,
     if (audioPath != null) 'audioPath': audioPath,
+    'chars': chars,
+    if (durationMs != null) 'durationMs': durationMs,
     'lastOpened': lastOpened.toIso8601String(),
   };
 
@@ -59,6 +94,8 @@ class Doc {
     total: j['total'] as int,
     position: j['position'] as int? ?? 0,
     audioPath: j['audioPath'] as String?,
+    chars: j['chars'] as int? ?? 0,
+    durationMs: j['durationMs'] as int?,
     lastOpened: DateTime.tryParse(j['lastOpened'] as String? ?? ''),
   );
 }
@@ -74,7 +111,11 @@ class Library {
     if (raw != null) {
       for (final j in jsonDecode(raw) as List) {
         final d = Doc.fromJson(j as Map<String, dynamic>);
-        if (File(d.textPath).existsSync()) docs.add(d);
+        if (!File(d.textPath).existsSync()) continue;
+        if (d.chars == 0 && !d.recorded) {
+          d.chars = File(d.textPath).readAsStringSync().length;
+        }
+        docs.add(d);
       }
     }
     _sort();
@@ -133,6 +174,7 @@ class Library {
         filePath: file.path,
         textPath: textFile.path,
         total: segment(text).length,
+        chars: text.length,
       );
       docs.insert(0, doc);
       await save();
@@ -181,6 +223,7 @@ class Library {
       textPath: scriptFile.path,
       audioPath: audioFile.path,
       total: (json['segments'] as List).length,
+      durationMs: json['durationMs'] as int?,
     );
     docs.insert(0, doc);
     await save();

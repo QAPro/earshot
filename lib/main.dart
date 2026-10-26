@@ -6,6 +6,10 @@ import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'ui/home_screen.dart';
 import 'ui/setup_screen.dart';
+import 'ui/theme.dart';
+
+/// Shows playback errors on whichever screen is open.
+final messenger = GlobalKey<ScaffoldMessengerState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,12 +24,14 @@ class EarshotApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const seed = Color(0xFF2E6F6A);
     return MaterialApp(
       title: 'Earshot',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.light),
-      darkTheme: ThemeData(colorSchemeSeed: seed, brightness: Brightness.dark),
+      // Design B "Now Playing"; follows the phone's light/dark setting.
+      theme: earshotTheme(Brightness.light),
+      darkTheme: earshotTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
+      scaffoldMessengerKey: messenger,
       home: _Root(state: state),
     );
   }
@@ -66,13 +72,20 @@ class _RootState extends State<_Root> {
             )
           : builder(),
     );
+    final h = widget.state.handler;
+    h.error.addListener(() {
+      final e = h.error.value;
+      if (e == null) return;
+      messenger.currentState?.showSnackBar(SnackBar(content: Text(e)));
+      h.error.value = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final installed = _installed;
     if (installed == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: SizedBox());
     }
     if (!installed) {
       return SetupScreen(

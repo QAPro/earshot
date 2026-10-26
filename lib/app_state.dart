@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'audio/reader_handler.dart';
@@ -11,6 +12,10 @@ class AppState {
   final settings = Settings();
   ReaderHandler? _handler;
   ReaderHandler get handler => _handler!;
+
+  /// For rendering screens in tests without a voice model or audio.
+  @visibleForTesting
+  set handlerForTest(ReaderHandler h) => _handler = h;
 
   /// Files shared to the app from other apps (Android).
   static const _share = MethodChannel('earshot/share');
