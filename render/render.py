@@ -136,12 +136,16 @@ def run_engine(engine: str, jobs: list[dict], work: str) -> None:
             n = int(line.split()[1])
             now = time.time()
             first_done = first_done or now
+            # About every 10%, plus the first and last line, not every line.
+            step = max(1, todo // 10)
+            if n not in (1, todo) and n % step:
+                continue
             eta = ""
-            if n > 1:
+            if 1 < n < todo:
                 per = (now - first_done) / (n - 1)
                 left = per * (todo - n)
                 eta = f", about {int(left // 60)} min {int(left % 60)} s left"
-            print(f"  {n}/{todo}{eta}", flush=True)
+            print(f"  {n}/{todo} ({100 * n // todo}%){eta}", flush=True)
         else:
             log.append(line)
     if proc.wait() != 0:
