@@ -41,6 +41,26 @@ voices:
   Without a description, the storyteller engine uses a plain one based on the
   voice (for example "an adult American woman").
 
+### Writing good character descriptions (2026-10-26)
+
+Qwen3-TTS accepts any length and its documentation gives no guidance, so this is
+how these models generally behave, not a measured limit:
+
+| | Length | What it gets you |
+|---|---|---|
+| Minimum | ~5–8 words | Gender, age, accent and one quality: *"A calm, middle-aged British man."* Less than that and the model guesses; the voice wanders more. |
+| **Sweet spot** | 1–2 sentences, ~15–40 words | Who (gender, age, accent), how the voice sounds (low, gravelly, bright, breathy), and their manner (unhurried, clipped, warm). |
+| Too long | past ~60 words | Nothing breaks, but extra words add less and less: the model latches onto a few traits and the rest dilutes. Contradictory traits make the voice wobble. |
+
+- **Describe the sound, not the biography.** "Low, precise, unhurried" changes the
+  voice; "lost her lab to a scandal" doesn't. The model can't hear backstory.
+- **Emotions go on the line, not in the description** (`Boombs (furious): …`). The
+  description applies to every line, so "furious" there makes them furious all the
+  time. A standing trait ("always weary") does belong in the description.
+- **The description does two jobs.** With voice matching it designs the character's
+  reference voice *and* guides each line's acting, so timbre words (pitch, texture,
+  accent) count most.
+
 ## 2. The voices
 
 Use the name or the id. The first eight are the ones you picked.
