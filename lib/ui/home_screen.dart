@@ -210,6 +210,7 @@ class _HomeScreenState extends State<HomeScreen> {
   IconData _iconFor(String path) => switch (p.extension(path).toLowerCase()) {
     '.pdf' => Icons.picture_as_pdf_outlined,
     '.docx' => Icons.description_outlined,
+    '.mp3' => Icons.mic_none, // storyteller recording
     _ => Icons.article_outlined,
   };
 }
@@ -235,7 +236,7 @@ class _Empty extends StatelessWidget {
             Text('Nothing to read yet', style: t.titleLarge),
             const SizedBox(height: 12),
             Text(
-              'Tap "Open document" to pick a PDF, Word, text or Markdown file.\n\n'
+              'Tap "Open document" to pick a PDF, Word, text or Markdown file, or an .earshot storyteller recording.\n\n'
               'From another app, use Share and choose Earshot. '
               'For a Google Doc: Share & export → Send a copy → Word or PDF.',
               textAlign: TextAlign.center,

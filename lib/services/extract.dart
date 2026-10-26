@@ -13,7 +13,15 @@ import 'package:xml/xml.dart';
 
 import 'cast.dart';
 
-const supportedExtensions = ['pdf', 'docx', 'txt', 'md', 'markdown', 'text'];
+const supportedExtensions = [
+  'pdf',
+  'docx',
+  'txt',
+  'md',
+  'markdown',
+  'text',
+  'earshot', // storyteller recording from render/render.py
+];
 
 class ExtractException implements Exception {
   ExtractException(this.message);

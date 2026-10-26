@@ -8,7 +8,7 @@ const doc = '''
 ---
 voices:
   Narrator: Michael
-  Boombs: Bella
+  Boombs: Bella | strong woman, late thirties, calm authority
   The Witch: emma
   Ghost: NoSuchVoice
 ---

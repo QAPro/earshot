@@ -3,7 +3,9 @@ library;
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,6 +21,7 @@ class Doc {
     required this.textPath,
     required this.total,
     this.position = 0,
+    this.audioPath,
     DateTime? lastOpened,
   }) : lastOpened = lastOpened ?? DateTime.now();
 
@@ -28,6 +31,11 @@ class Doc {
   final String textPath;
   final int total;
   int position;
+
+  /// Set for a storyteller recording (.earshot): the audio to play. Its
+  /// textPath then holds the recording's script with sentence timings.
+  final String? audioPath;
+  bool get recorded => audioPath != null;
   DateTime lastOpened;
 
   double get progress => total == 0 ? 0 : (position / total).clamp(0, 1);
@@ -39,6 +47,7 @@ class Doc {
     'textPath': textPath,
     'total': total,
     'position': position,
+    if (audioPath != null) 'audioPath': audioPath,
     'lastOpened': lastOpened.toIso8601String(),
   };
 
@@ -49,6 +58,7 @@ class Doc {
     textPath: j['textPath'] as String,
     total: j['total'] as int,
     position: j['position'] as int? ?? 0,
+    audioPath: j['audioPath'] as String?,
     lastOpened: DateTime.tryParse(j['lastOpened'] as String? ?? ''),
   );
 }
@@ -108,6 +118,7 @@ class Library {
     }
     final dir = await _dir();
     final id = DateTime.now().microsecondsSinceEpoch.toString();
+    if (ext == '.earshot') return _importRecording(id, dir, name, bytes);
     final file = File(p.join(dir.path, '$id$ext'));
     final sink = file.openWrite();
     await sink.addStream(bytes);
@@ -132,8 +143,65 @@ class Library {
     }
   }
 
-  Future<List<Segment>> segmentsFor(Doc d) async =>
-      segment(await File(d.textPath).readAsString());
+  /// A storyteller recording made by render/render.py: a zip holding
+  /// audio.mp3 and script.json (sentences with their timings).
+  Future<Doc> _importRecording(
+    String id,
+    Directory dir,
+    String name,
+    Stream<List<int>> bytes,
+  ) async {
+    final chunks = BytesBuilder(copy: false);
+    await for (final c in bytes) {
+      chunks.add(c);
+    }
+    final invalid = ExtractException(
+      '"$name" isn\'t a valid Earshot recording.',
+    );
+    final Archive zip;
+    try {
+      zip = ZipDecoder().decodeBytes(chunks.takeBytes());
+    } catch (_) {
+      throw invalid;
+    }
+    final audio = zip.findFile('audio.mp3');
+    final script = zip.findFile('script.json');
+    if (audio == null || script == null) throw invalid;
+    final json =
+        jsonDecode(utf8.decode(script.content)) as Map<String, dynamic>;
+    if (json['format'] != 'earshot-audio') throw invalid;
+    final audioFile = File(p.join(dir.path, '$id.mp3'));
+    await audioFile.writeAsBytes(audio.content);
+    final scriptFile = File(p.join(dir.path, '$id.recording.json'));
+    await scriptFile.writeAsBytes(script.content);
+    final doc = Doc(
+      id: id,
+      title: (json['title'] as String?) ?? p.basenameWithoutExtension(name),
+      filePath: audioFile.path,
+      textPath: scriptFile.path,
+      audioPath: audioFile.path,
+      total: (json['segments'] as List).length,
+    );
+    docs.insert(0, doc);
+    await save();
+    return doc;
+  }
+
+  Future<List<Segment>> segmentsFor(Doc d) async {
+    final raw = await File(d.textPath).readAsString();
+    if (!d.recorded) return segment(raw);
+    final json = jsonDecode(raw) as Map<String, dynamic>;
+    return [
+      for (final s in (json['segments'] as List).cast<Map<String, dynamic>>())
+        Segment(
+          s['paragraph'] as int,
+          s['text'] as String,
+          label: s['label'] as String?,
+          startMs: s['start'] as int,
+          endMs: s['end'] as int,
+        ),
+    ];
+  }
 
   Future<void> remove(Doc d) async {
     docs.removeWhere((x) => x.id == d.id);

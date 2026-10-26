@@ -39,6 +39,9 @@
                 <data android:mimeType="application/pdf"/>
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
                 <data android:mimeType="text/*"/>
+                <!-- .earshot recordings arrive as zip or generic files. -->
+                <data android:mimeType="application/zip"/>
+                <data android:mimeType="application/octet-stream"/>
             </intent-filter>
             <!-- "Open with" Earshot. -->
             <intent-filter>
@@ -51,6 +54,8 @@
                 <data android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"/>
                 <data android:mimeType="text/plain"/>
                 <data android:mimeType="text/markdown"/>
+                <data android:mimeType="application/zip"/>
+                <data android:mimeType="application/octet-stream"/>
             </intent-filter>
         </activity>
         <service android:name="com.ryanheise.audioservice.AudioService"

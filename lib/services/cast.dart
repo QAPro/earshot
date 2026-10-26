@@ -152,7 +152,9 @@ bool hasCastHeader(String text) =>
     final l = lines[i].trim();
     if (l == '---') return (i + 1, cast);
     if (l.isEmpty) continue;
-    final m = RegExp(r'^(.+?)\s*:\s*(\S+)\s*$').firstMatch(l);
+    // "Name: Voice" or "Name: Voice | description" (the description is for
+    // the storyteller renderer; the app ignores it).
+    final m = RegExp(r'^(.+?)\s*:\s*([^|\s]+)\s*(?:\|.*)?$').firstMatch(l);
     if (m == null) continue;
     final v = findVoice(m.group(2)!);
     if (v != null) cast[m.group(1)!.toLowerCase()] = v.id;

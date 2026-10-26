@@ -20,9 +20,33 @@ Installs into `D:\earshot-render` (or `%LOCALAPPDATA%\earshot-render` without a 
 Python, two environments (the engines need different library versions), about 8 GB of models,
 and an **Earshot Render** desktop shortcut. Run the same line again to update.
 
+## Use
+
+Drag one or more documents onto **Earshot Render** on the desktop. A window shows progress and
+an estimate of the time left, then opens the output folder. For each document you get:
+
+- `<name>.earshot`: open it in Earshot (file picker, or Share → Earshot). It plays the
+  recording and still highlights, skips and remembers your place by sentence.
+- `<name>.mp3`: the same audio for any player.
+
+Ordinary documents are narrated by Chatterbox; cast documents ([`../docs/FORMAT.md`](../docs/FORMAT.md))
+are acted by Qwen3-TTS. Interrupted? Drag the same file on again: finished lines are kept.
+
+**Settings** are in `settings.json` in the install folder (created on first use):
+
+| Setting | Meaning |
+|---|---|
+| `voice` | Narrator for ordinary documents: any Earshot voice name (Michael, Heart, George…) |
+| `style` | `calm`, `storyteller` (default) or `dramatic` |
+| `narrator` | How Qwen narrates cast documents that don't describe their Narrator |
+| `output_dir` | Where results go, e.g. a Google Drive folder to reach the phone |
+
 ## Files
 
 - `setup.ps1`: the installer.
+- `render.py`: the converter (run by the desktop shortcut). `earshot_text.py`: the same text
+  rules as the app (paragraphs, sentences, cast lines). `engine_worker.py`: renders lines with
+  one engine; skips lines already done.
 - `check.py`: confirms an engine runs on the GPU and writes a test MP3.
 - `env/*.in`: what each environment needs. `env/*.lock`: exact versions, resolved for
   Windows + CUDA 12.8 (RTX 50-series needs it). Chatterbox officially pins PyTorch 2.6, which

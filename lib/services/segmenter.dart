@@ -12,6 +12,8 @@ class Segment {
     this.delivery = Delivery.plain,
     this.pauseMs = 0,
     this.label,
+    this.startMs,
+    this.endMs,
   });
 
   /// Index of the paragraph this sentence belongs to.
@@ -24,6 +26,11 @@ class Segment {
   final Delivery delivery;
   final int pauseMs;
   final String? label;
+
+  /// Recorded (storyteller) documents only: where this sentence sits in the
+  /// audio file.
+  final int? startMs;
+  final int? endMs;
 }
 
 const _abbreviations = {

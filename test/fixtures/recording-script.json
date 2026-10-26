@@ -1,0 +1,41 @@
+{
+ "format": "earshot-audio",
+ "version": 1,
+ "title": "mini-cast",
+ "source": "mini-cast.txt",
+ "engine": "qwen",
+ "voice": null,
+ "style": null,
+ "created": "2026-10-26T15:54:37",
+ "durationMs": 7222,
+ "segments": [
+  {
+   "paragraph": 0,
+   "text": "Release night.",
+   "label": null,
+   "start": 0,
+   "end": 1042
+  },
+  {
+   "paragraph": 1,
+   "text": "Then why is the login page blank on my phone?",
+   "label": "Ana",
+   "start": 1292,
+   "end": 4743
+  },
+  {
+   "paragraph": 2,
+   "text": "",
+   "label": null,
+   "start": 4993,
+   "end": 5993
+  },
+  {
+   "paragraph": 3,
+   "text": "That's not possible!",
+   "label": "Tom",
+   "start": 6243,
+   "end": 7222
+  }
+ ]
+}

@@ -24,8 +24,14 @@ const _lookAhead = 3;
 class ReaderHandler extends BaseAudioHandler {
   ReaderHandler(this.tts, this.library, this.settings) {
     _player.processingStateStream.listen((s) {
-      if (s == ProcessingState.completed) _finishSegment();
+      if (s != ProcessingState.completed) return;
+      if (_recorded) {
+        _recordingFinished();
+      } else {
+        _finishSegment();
+      }
     });
+    _player.positionStream.listen(_onPosition);
     _initSession();
   }
 
@@ -47,6 +53,11 @@ class ReaderHandler extends BaseAudioHandler {
 
   Doc? doc;
   List<Segment> segments = const [];
+
+  /// A storyteller recording plays one audio file; the highlighted sentence
+  /// follows the play position instead of generating speech.
+  bool get _recorded => doc?.recorded ?? false;
+  String? _loadedRecording;
 
   int _run = 0; // bumps on every stop/jump so stale loops exit
   Completer<void>? _segmentDone;
@@ -85,6 +96,7 @@ class ReaderHandler extends BaseAudioHandler {
 
   Future<void> open(Doc d, List<Segment> segs) async {
     await _stopPlayback();
+    _loadedRecording = null;
     doc = d;
     segments = segs;
     _clearAudio();
@@ -105,6 +117,10 @@ class ReaderHandler extends BaseAudioHandler {
     if (index.value >= segments.length) index.value = 0;
     playing.value = true;
     _publishState();
+    if (_recorded) {
+      await _playRecording();
+      return;
+    }
     unawaited(_loop(++_run));
   }
 
@@ -112,7 +128,11 @@ class ReaderHandler extends BaseAudioHandler {
   Future<void> pause() async {
     if (!playing.value) return;
     playing.value = false;
-    await _stopPlayback();
+    if (_recorded) {
+      await _player.pause(); // resumes exactly where it stopped
+    } else {
+      await _stopPlayback();
+    }
     _publishState();
   }
 
@@ -171,6 +191,13 @@ class ReaderHandler extends BaseAudioHandler {
 
   Future<void> jumpTo(int i) async {
     if (segments.isEmpty) return;
+    if (_recorded) {
+      index.value = i.clamp(0, segments.length - 1);
+      _savePosition();
+      _publishItem();
+      await _seekToCurrent();
+      return;
+    }
     final wasPlaying = playing.value;
     await _stopPlayback();
     index.value = i.clamp(0, segments.length - 1);
@@ -181,6 +208,82 @@ class ReaderHandler extends BaseAudioHandler {
     } else {
       _publishState();
     }
+  }
+
+  // ------------------------------------------------- storyteller recordings
+
+  Future<void> _ensureRecordingLoaded() async {
+    final path = doc!.audioPath!;
+    if (_loadedRecording == path) return;
+    await _player.setFilePath(path);
+    _loadedRecording = path;
+  }
+
+  Future<void> _playRecording() async {
+    try {
+      await _ensureRecordingLoaded();
+      final seg = segments[index.value];
+      final pos = _player.position.inMilliseconds;
+      final inside = pos >= (seg.startMs ?? 0) && pos < (seg.endMs ?? 0);
+      if (!inside) await _player.seek(Duration(milliseconds: seg.startMs ?? 0));
+      await _player.setSpeed(settings.speed);
+      unawaited(_player.play());
+    } catch (e) {
+      playing.value = false;
+      error.value = 'Playback failed: $e';
+      _publishState();
+    }
+  }
+
+  Future<void> _seekToCurrent() async {
+    try {
+      await _ensureRecordingLoaded();
+      await _player.seek(
+        Duration(milliseconds: segments[index.value].startMs ?? 0),
+      );
+    } catch (e) {
+      error.value = 'Playback failed: $e';
+    }
+  }
+
+  /// Moves the highlight to the sentence being heard.
+  void _onPosition(Duration position) {
+    if (!_recorded || !playing.value || segments.isEmpty) return;
+    final ms = position.inMilliseconds;
+    var lo = 0, hi = segments.length - 1;
+    while (lo < hi) {
+      final mid = (lo + hi + 1) ~/ 2;
+      if ((segments[mid].startMs ?? 0) <= ms) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    if (lo != index.value) {
+      index.value = lo;
+      _savePosition();
+      _publishItem();
+    }
+  }
+
+  void _recordingFinished() {
+    if (!playing.value) return;
+    doc?.position = segments.length; // finished
+    unawaited(library.save());
+    if (settings.continueToNext) {
+      unawaited(
+        _switchDocument(1, fromStart: true).then((moved) {
+          if (!moved) {
+            playing.value = false;
+            _publishState();
+          }
+        }),
+      );
+      return;
+    }
+    playing.value = false;
+    index.value = segments.length - 1;
+    _publishState();
   }
 
   Future<void> toStart() => jumpTo(0);
@@ -211,6 +314,11 @@ class ReaderHandler extends BaseAudioHandler {
 
   Future<void> setPauses(Pauses pauses) async {
     if (pauses == settings.pauses) return;
+    if (_recorded) {
+      settings.pauses = pauses;
+      await settings.save();
+      return;
+    }
     final wasPlaying = playing.value;
     await _stopPlayback();
     settings.pauses = pauses;
@@ -233,6 +341,13 @@ class ReaderHandler extends BaseAudioHandler {
 
   Future<void> setVoice(Voice v) async {
     if (v.id == voice.value.id) return;
+    if (_recorded) {
+      // A recording has its voices baked in; this applies to other documents.
+      voice.value = v;
+      settings.voiceId = v.id;
+      await settings.save();
+      return;
+    }
     final wasPlaying = playing.value;
     await _stopPlayback();
     voice.value = v;

@@ -30,6 +30,16 @@ voices:
 - Names can have spaces (`The Witch: Emma`). Upper/lower case doesn't matter.
 - A voice name Earshot doesn't know is ignored; that character falls back to
   the narrator.
+- **Optional, for storyteller recordings:** add `| description` after the voice
+  to tell the storyteller engine who the character is. The app ignores it.
+
+  ```
+  Boombs: Bella | a strong woman in her late thirties, a structural engineer, calm authority
+  Narrator: Michael | a warm, gently amused wildlife-documentary narrator
+  ```
+
+  Without a description, the storyteller engine uses a plain one based on the
+  voice (for example "an adult American woman").
 
 ## 2. The voices
 
@@ -102,10 +112,11 @@ Kokoro can't really whisper, shout or act, so this is an approximation:
 Any other words (`not looking up`, `amused`, `like a nature documentary`) are
 kept but have no effect yet.
 
-**With the storyteller engine** (planned: a bigger model run on the 5080 that
-converts a document to audio ahead of time), the same delivery words become
-real acting instructions — whispering that sounds like whispering, a rising
-question, a narrator who sounds amused. You won't need to change your files.
+**With the storyteller renderer** ([`render/`](../render/README.md), on a PC with an
+NVIDIA card), the same delivery words become real acting instructions: whispering
+that sounds like whispering, a rising question, a narrator who sounds amused.
+Same files, nothing to change. Cast documents are acted by Qwen3-TTS, from the
+character's description plus the delivery words.
 
 ## 5. Punctuation
 
