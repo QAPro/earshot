@@ -1,6 +1,10 @@
 """Renders a list of lines with one voice engine. Started by render.py.
 
-Usage: python engine_worker.py qwen|chatterbox jobs.json
+Usage: python engine_worker.py qwen|chatterbox|chatterbox-vc jobs.json
+
+chatterbox-vc converts already-recorded lines ("src") to a reference voice
+("ref"), keeping the performance: used to keep each cast character's voice
+the same from line to line.
 
 jobs.json: [{"out": "...wav", "text": "...", ...engine options}]. Lines whose
 output file already exists are skipped, so an interrupted run resumes.
@@ -50,6 +54,21 @@ elif engine == "chatterbox":
         torch.manual_seed(zlib.crc32(j.get("seed_key", "").encode()))
         w = model.generate(j["text"], audio_prompt_path=os.path.join(HERE, "voices", j["voice"] + ".mp3"),
                            exaggeration=j["exaggeration"], cfg_weight=j["cfg_weight"])
+        save(j["out"], w.squeeze(0).cpu().numpy(), model.sr)
+        print(f"DONE {n}", flush=True)
+elif engine == "chatterbox-vc":
+    from chatterbox.vc import ChatterboxVC
+
+    model = ChatterboxVC.from_pretrained(device="cuda" if device.startswith("cuda") else "cpu")
+    current_ref = None
+    # Grouped by character so each reference voice is prepared once.
+    order = sorted(range(len(jobs)), key=lambda k: jobs[k]["ref"])
+    for n, k in enumerate(order, 1):
+        j = jobs[k]
+        if j["ref"] != current_ref:
+            model.set_target_voice(j["ref"])
+            current_ref = j["ref"]
+        w = model.generate(j["src"])
         save(j["out"], w.squeeze(0).cpu().numpy(), model.sr)
         print(f"DONE {n}", flush=True)
 else:

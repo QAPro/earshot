@@ -40,6 +40,20 @@ are acted by Qwen3-TTS. Interrupted? Drag the same file on again: finished lines
 | `style` | `calm`, `storyteller` (default) or `dramatic` |
 | `narrator` | How Qwen narrates cast documents that don't describe their Narrator |
 | `output_dir` | Where results go, e.g. a Google Drive folder to reach the phone |
+| `match_voices` | `true` (default): each cast character sounds the same on every line (see below) |
+
+## How cast voices stay consistent
+
+Qwen3-TTS builds a voice from the character description each time, so the same character
+drifts a little from line to line. With `match_voices` on, the renderer:
+
+1. has Qwen read one fixed passage per character, from their description, as that character's
+   reference voice;
+2. lets Qwen act every line as usual (delivery words included);
+3. passes every line through Chatterbox's voice converter onto that character's reference:
+   the performance stays, the voice is the same throughout.
+
+Chosen by Phil by ear on 2026-10-26 (Blackwood and Boombs, shouting included).
 
 ## Files
 

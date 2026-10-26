@@ -39,13 +39,18 @@ SR = 24000
 DEFAULTS = {
     "_help": "Edit and save; used for every document. voice: any Earshot voice name (Michael, Heart, "
              "George...). style: calm | storyteller | dramatic. narrator: how Qwen should sound when it "
-             "narrates (cast documents without a Narrator description). output_dir: where results go.",
+             "narrates (cast documents without a Narrator description). output_dir: where results go. "
+             "match_voices: true keeps each cast character's voice the same on every line.",
     "voice": "Michael",
     "style": "storyteller",
     "narrator": "A warm, expressive audiobook narrator with a clear voice, measured and engaging, "
                 "bringing the text to life without overacting",
     "output_dir": os.path.join(BASE, "output"),
+    "match_voices": True,
 }
+# Read by each character once to fix their voice; every line is then matched to it.
+REF_TEXT = ("I'll tell you exactly what happened, from the beginning, and I'll try to "
+            "leave nothing out, because the details matter more than anyone thinks.")
 STYLES = {  # Chatterbox: exaggeration, cfg_weight (lower = more expressive pacing)
     "calm": (0.4, 0.5),
     "storyteller": (0.75, 0.3),
@@ -78,7 +83,7 @@ def settings() -> dict:
 
 
 def python_for(engine: str) -> str:
-    env = os.path.join(BASE, "envs", engine)
+    env = os.path.join(BASE, "envs", "chatterbox" if engine.startswith("chatterbox") else engine)
     win = os.path.join(env, "Scripts", "python.exe")
     return win if os.path.exists(win) else os.path.join(env, "bin", "python")
 
@@ -93,14 +98,19 @@ def chatterbox_tuning(style: str, delivery: str) -> tuple[float, float]:
     return ex, cfg
 
 
-def qwen_instruct(seg: et.Segment, s: dict) -> str:
+def qwen_who(seg: et.Segment, s: dict) -> str:
+    """Who is speaking, for Qwen: the cast description, else a plain one."""
     if seg.description:
         who = seg.description
     elif seg.label or seg.voice:
         who = et.describe_voice(seg.voice or et.find_voice(s["voice"]))
     else:
         who = s["narrator"]
-    who = who.rstrip(". ")
+    return who.rstrip(". ")
+
+
+def qwen_instruct(seg: et.Segment, s: dict) -> str:
+    who = qwen_who(seg, s)
     return f"{who}. Delivery: {seg.delivery}." if seg.delivery else f"{who}."
 
 
@@ -109,7 +119,8 @@ def run_engine(engine: str, jobs: list[dict], work: str) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(jobs, f, ensure_ascii=False)
     cmd = [python_for(engine), "-u", os.path.join(HERE, "engine_worker.py"), engine, path]
-    label = "Qwen3-TTS" if engine == "qwen" else "Chatterbox"
+    label = {"qwen": "Qwen3-TTS", "chatterbox": "Chatterbox",
+             "chatterbox-vc": "Voice matching"}[engine]
     print(f"Loading {label}...", flush=True)
     t0 = time.time()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -185,9 +196,28 @@ def render(path: str, s: dict) -> None:
             ex, cfg = chatterbox_tuning(s["style"], seg.delivery)
             jobs.append({"out": out, "text": spoken, "voice": seg.voice or voice,
                          "exaggeration": ex, "cfg_weight": cfg, "seed_key": "narrator"})
+    # Cast documents: one reference clip per character, designed once from their
+    # description, so every line can be matched to the same voice afterwards.
+    match = cast and bool(s.get("match_voices", True))
+    refs: dict[str, str] = {}
+    if match:
+        for i, seg in enumerate(segs):
+            k = seg.label or "narrator"
+            if i not in clip or k in refs:
+                continue
+            refs[k] = os.path.join(work, f"ref_{re.sub(r'[^A-Za-z0-9]+', '_', k)[:30]}.wav")
+            jobs.insert(0, {"out": refs[k], "text": REF_TEXT, "instruct": qwen_who(seg, s) + ".", "seed_key": k})
     kind = "cast document, acted by Qwen3-TTS" if cast else f"narrated by Chatterbox as {s['voice']} ({s['style']})"
-    print(f"{len(segs)} sentences, {kind}.", flush=True)
+    print(f"{len(segs)} sentences, {kind}" + (f"; {len(refs)} voices kept consistent." if match else "."), flush=True)
     run_engine(engine, jobs, work)
+    if match:
+        vc_jobs = []
+        for i, seg in enumerate(segs):
+            if i in clip:
+                matched = clip[i].replace(".wav", ".matched.wav")
+                vc_jobs.append({"src": clip[i], "ref": refs[seg.label or "narrator"], "out": matched})
+                clip[i] = matched
+        run_engine("chatterbox-vc", vc_jobs, work)
 
     # Assemble: trimmed clips with our own gaps, and each sentence's timing.
     parts, timeline, pos = [], [], 0
