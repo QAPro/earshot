@@ -111,4 +111,20 @@ Jo: Yeah, well. [pause 2s] Fine.
       ('', 3000),
     ]);
   });
+
+  test('pause tag spellings', () {
+    for (final (tag, ms) in [
+      ('[pause 1 sec]', 1000),
+      ('[Pause: 2 seconds]', 2000),
+      ('[pause 250 milliseconds]', 250),
+      ('[pause 1.5]', 1500),
+    ]) {
+      final segs = segment('Before. $tag After.');
+      expect(segs.map((s) => (s.text, s.pauseMs)).toList(), [
+        ('Before.', 0),
+        ('', ms),
+        ('After.', 0),
+      ], reason: tag);
+    }
+  });
 }

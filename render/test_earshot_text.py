@@ -42,6 +42,12 @@ def test_inline_pauses():
     assert [(s.text, s.pause_ms) for s in plain] == [("First part.", 0), ("", 1500), ("Second part.", 0), ("", 3000)]
 
 
+def test_pause_spellings():
+    for tag, ms in [("[pause 1 sec]", 1000), ("[Pause: 2 seconds]", 2000), ("[pause 250 milliseconds]", 250), ("[pause 1.5]", 1500)]:
+        segs = et.segment(f"Before. {tag} After.")
+        assert [(x.text, x.pause_ms) for x in segs] == [("Before.", 0), ("", ms), ("After.", 0)], tag
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

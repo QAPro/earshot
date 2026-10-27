@@ -108,7 +108,7 @@ After the cast list, **every line is spoken on its own**.
 | `Tom: (whispering) Don't tell anyone.` | Same — script-style parenthetical |
 | `[Tom, whispering] Don't tell anyone.` | Same — bracket style |
 | `[slowly] A deployment finished.` | Narrator, with a delivery |
-| `[pause 2s]` or `[pause 500ms]` | Silence (up to 30 s) |
+| `[pause 2s]` or `[pause 500ms]` | Silence (up to 30 s). Also `[pause 1 sec]`, `[pause 2 seconds]`, `[pause: 1.5]` (no unit = seconds) |
 | `Jo: Yeah, well. [pause 2s] Fine.` | Silence mid-line — a pause tag works anywhere in a line, and in any document, cast list or not |
 | `Any other line.` | Narrator |
 | `Note: this is fine.` | Narrator — `Name:` only counts for names in the cast list |

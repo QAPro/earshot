@@ -172,6 +172,11 @@ def load(path: str) -> np.ndarray:
     return x
 
 
+def content_key(job: dict) -> str:
+    """A short hash of a job's settings (everything but where it's saved)."""
+    return hashlib.sha1(json.dumps({k: v for k, v in sorted(job.items()) if k != "out"}).encode()).hexdigest()[:10]
+
+
 def render(path: str, s: dict) -> None:
     name = os.path.splitext(os.path.basename(path))[0]
     print(f"\n=== {name}", flush=True)
@@ -191,15 +196,16 @@ def render(path: str, s: dict) -> None:
         spoken = et.for_speech(seg.text)
         if not spoken:
             continue
-        out = os.path.join(work, f"seg_{i:05d}.wav")
-        clip[i] = out
         if engine == "qwen":
-            jobs.append({"out": out, "text": spoken, "instruct": qwen_instruct(seg, s),
-                         "seed_key": seg.speaker or "narrator"})
+            job = {"text": spoken, "instruct": qwen_instruct(seg, s), "seed_key": seg.speaker or "narrator"}
         else:
             ex, cfg = chatterbox_tuning(s["style"], seg.delivery)
-            jobs.append({"out": out, "text": spoken, "voice": seg.voice or voice,
-                         "exaggeration": ex, "cfg_weight": cfg, "seed_key": "narrator"})
+            job = {"text": spoken, "voice": seg.voice or voice,
+                   "exaggeration": ex, "cfg_weight": cfg, "seed_key": "narrator"}
+        # Named after what it says and how, so a saved clip is only reused for
+        # exactly the same line (not whatever now sits at that position).
+        job["out"] = clip[i] = os.path.join(work, f"seg_{i:05d}-{content_key(job)}.wav")
+        jobs.append(job)
     # Cast documents: one reference clip per character, designed once from their
     # description, so every line can be matched to the same voice afterwards.
     match = cast and bool(s.get("match_voices", True))
@@ -210,8 +216,10 @@ def render(path: str, s: dict) -> None:
             k = seg.speaker or "narrator"
             if i not in clip or k in refs:
                 continue
-            refs[k] = os.path.join(work, f"ref_{re.sub(r'[^A-Za-z0-9]+', '_', k)[:30]}.wav")
-            jobs.insert(0, {"out": refs[k], "text": REF_TEXT, "instruct": qwen_who(seg, s) + ".", "seed_key": k})
+            ref = {"text": REF_TEXT, "instruct": qwen_who(seg, s) + ".", "seed_key": k}
+            refs[k] = ref["out"] = os.path.join(
+                work, f"ref_{re.sub(r'[^A-Za-z0-9]+', '_', k)[:30]}-{content_key(ref)}.wav")
+            jobs.insert(0, ref)
     kind = "cast document, acted by Qwen3-TTS" if cast else f"narrated by Chatterbox as {s['voice']} ({s['style']})"
     print(f"{len(segs)} sentences, {kind}" + (f"; {len(refs)} voices kept consistent." if match else "."), flush=True)
     run_engine(engine, jobs, work)
@@ -222,7 +230,8 @@ def render(path: str, s: dict) -> None:
                 k = seg.speaker or "narrator"
                 # The speaker is in the name, so a change of speaker re-matches.
                 slug = re.sub(r"[^A-Za-z0-9]+", "_", k)[:30]
-                matched = clip[i].replace(".wav", f".matched-{slug}.wav")
+                ref_key = os.path.splitext(refs[k])[0].rsplit("-", 1)[-1]
+                matched = clip[i].replace(".wav", f".matched-{slug}-{ref_key}.wav")
                 vc_jobs.append({"src": clip[i], "ref": refs[k], "out": matched})
                 clip[i] = matched
         run_engine("chatterbox-vc", vc_jobs, work)

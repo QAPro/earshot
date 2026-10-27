@@ -109,14 +109,14 @@ List<Segment> segment(String text) {
 
 /// A pause tag anywhere in the text: [pause 2s], [pause 500ms], [pause 1.5].
 final pauseTag = RegExp(
-  r'\[\s*pause\s*([\d.]+)\s*(ms|s)?\s*\]',
+  r'\[\s*pause\s*:?\s*([\d.]+)\s*(ms|milliseconds?|s|secs?|seconds?)?\s*\]',
   caseSensitive: false,
 );
 
 /// The pause a tag asks for, in milliseconds (0–30 s).
 int pauseMsOf(Match m) {
   final n = double.tryParse(m.group(1)!) ?? 0;
-  final ms = m.group(2)?.toLowerCase() == 'ms' ? n : n * 1000;
+  final ms = (m.group(2) ?? 's').toLowerCase().startsWith('m') ? n : n * 1000;
   return ms.round().clamp(0, 30000);
 }
 

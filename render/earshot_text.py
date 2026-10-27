@@ -215,7 +215,7 @@ def describe_voice(vid: str) -> str:
 
 
 # A pause tag anywhere in the text: [pause 2s], [pause 500ms], [pause 1.5].
-PAUSE_TAG = re.compile(r"\[\s*pause\s*([\d.]+)\s*(ms|s)?\s*\]", re.I)
+PAUSE_TAG = re.compile(r"\[\s*pause\s*:?\s*([\d.]+)\s*(ms|milliseconds?|s|secs?|seconds?)?\s*\]", re.I)
 
 
 def pause_ms_of(m: re.Match) -> int:
@@ -223,7 +223,7 @@ def pause_ms_of(m: re.Match) -> int:
         n = float(m.group(1))
     except ValueError:
         return 0
-    ms = n if (m.group(2) or "").lower() == "ms" else n * 1000
+    ms = n if (m.group(2) or "s").lower().startswith("m") else n * 1000
     return int(round(min(max(ms, 0), 30000)))
 
 
