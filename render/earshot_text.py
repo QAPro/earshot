@@ -214,6 +214,39 @@ def describe_voice(vid: str) -> str:
 # ------------------------------------------------------------------ cast
 
 
+# A pause tag anywhere in the text: [pause 2s], [pause 500ms], [pause 1.5].
+PAUSE_TAG = re.compile(r"\[\s*pause\s*([\d.]+)\s*(ms|s)?\s*\]", re.I)
+
+
+def pause_ms_of(m: re.Match) -> int:
+    try:
+        n = float(m.group(1))
+    except ValueError:
+        return 0
+    ms = n if (m.group(2) or "").lower() == "ms" else n * 1000
+    return int(round(min(max(ms, 0), 30000)))
+
+
+def split_pauses(s: str) -> list[tuple[str, int]]:
+    """s cut at its pause tags: text pieces (pause 0) and pauses (empty text), in order."""
+    out: list[tuple[str, int]] = []
+    start = 0
+
+    def text(t: str):
+        c = re.sub(r"\s+", " ", t).strip()
+        if c:
+            out.append((c, 0))
+
+    for m in PAUSE_TAG.finditer(s):
+        text(s[start:m.start()])
+        ms = pause_ms_of(m)
+        if ms:
+            out.append(("", ms))
+        start = m.end()
+    text(s[start:])
+    return out
+
+
 @dataclass
 class CastLine:
     text: str
@@ -267,15 +300,15 @@ def parse_cast(text: str) -> list[CastLine] | None:
         line = raw.strip()
         if not line:
             continue
-        pause = re.fullmatch(r"\[\s*pause\s*([\d.]+)\s*(ms|s)?\s*\]", line, re.I)
+        # A pause on its own line. Pauses inside a line are split out later.
+        pause = PAUSE_TAG.fullmatch(line)
         if pause:
-            n = float(pause.group(1))
-            ms = n if (pause.group(2) or "").lower() == "ms" else n * 1000
-            out.append(CastLine(text="", pause_ms=int(min(max(ms, 0), 30000))))
+            out.append(CastLine(text="", pause_ms=pause_ms_of(pause)))
             continue
         speaker, delivery = None, ""
         b = re.match(r"^\[([^\]]+)\]\s*(.*)$", line)
-        if b:
+        # (A line that starts with a pause tag isn't a delivery note.)
+        if b and not PAUSE_TAG.match(line):
             parts = b.group(1).split(",")
             first = parts[0].strip()
             if first.lower() in cast:
@@ -375,16 +408,24 @@ def segment(text: str) -> list[Segment]:
                 out.append(Segment(pi, "", pause_ms=l.pause_ms, cast=True))
                 continue
             first = True
-            for s in split_sentences(re.sub(r"\s+", " ", l.text)):
-                for c in limit(s):
-                    out.append(Segment(pi, c, label=l.speaker if first else None, speaker=l.speaker,
-                                       voice=l.voice,
-                                       description=l.description, delivery=l.delivery, cast=True))
-                    first = False
+            for piece, ms in split_pauses(l.text):
+                if ms:
+                    out.append(Segment(pi, "", pause_ms=ms, cast=True))
+                    continue
+                for s in split_sentences(piece):
+                    for c in limit(s):
+                        out.append(Segment(pi, c, label=l.speaker if first else None, speaker=l.speaker,
+                                           voice=l.voice,
+                                           description=l.description, delivery=l.delivery, cast=True))
+                        first = False
         return out
     paragraphs = [re.sub(r"\s+", " ", p).strip() for p in re.split(r"\n\s*\n", text.replace("\r\n", "\n"))]
     for pi, p in enumerate(x for x in paragraphs if x):
-        for s in split_sentences(p):
-            for c in limit(s):
-                out.append(Segment(pi, c))
+        for piece, ms in split_pauses(p):
+            if ms:
+                out.append(Segment(pi, "", pause_ms=ms))
+                continue
+            for s in split_sentences(piece):
+                for c in limit(s):
+                    out.append(Segment(pi, c))
     return out

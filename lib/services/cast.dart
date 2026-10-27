@@ -15,13 +15,14 @@
 ///     The Witch: (not looking up) It's a solvent. script-style parenthetical
 ///     [Boombs, whispering] Trix, no.              bracket form
 ///     [quietly] The rain eased.                   narrator, with a delivery
-///     [pause 2s]                                  silence
+///     [pause 2s]                                  silence (anywhere in a line)
 ///     Any other line                              the narrator
 ///
 /// See docs/FORMAT.md for the full list.
 library;
 
 import '../voices.dart';
+import 'segmenter.dart' show pauseTag, pauseMsOf;
 
 /// How a line should be delivered. Kokoro can't act, so a delivery maps to
 /// what it *can* change: speed and loudness. The words are kept so a more
@@ -184,14 +185,10 @@ List<CastLine>? parseCast(String text) {
     var line = raw.trim();
     if (line.isEmpty) continue;
 
-    final pause = RegExp(
-      r'^\[\s*pause\s*([\d.]+)\s*(ms|s)?\s*\]$',
-      caseSensitive: false,
-    ).firstMatch(line);
-    if (pause != null) {
-      final n = double.parse(pause.group(1)!);
-      final ms = pause.group(2)?.toLowerCase() == 'ms' ? n : n * 1000;
-      out.add(CastLine(text: '', pauseMs: ms.round().clamp(0, 30000)));
+    // A pause on its own line. Pauses inside a line are split out later.
+    final pause = pauseTag.matchAsPrefix(line);
+    if (pause != null && pause.end == line.length) {
+      out.add(CastLine(text: '', pauseMs: pauseMsOf(pause)));
       continue;
     }
 
@@ -199,8 +196,9 @@ List<CastLine>? parseCast(String text) {
     var delivery = '';
 
     // [Name, delivery] text   |   [delivery] text
+    // (A line that starts with a pause tag isn't a delivery note.)
     final bracket = RegExp(r'^\[([^\]]+)\]\s*(.*)$').firstMatch(line);
-    if (bracket != null) {
+    if (bracket != null && pauseTag.matchAsPrefix(line) == null) {
       final parts = bracket.group(1)!.split(',');
       final first = parts.first.trim();
       if (cast.containsKey(first.toLowerCase())) {

@@ -91,13 +91,52 @@ List<Segment> segment(String text) {
       .where((p) => p.isNotEmpty);
   var pi = 0;
   for (final p in paragraphs) {
-    for (final s in splitSentences(p)) {
-      for (final c in _limit(s)) {
-        out.add(Segment(pi, c));
+    for (final (piece, ms) in splitPauses(p)) {
+      if (ms > 0) {
+        out.add(Segment(pi, '', pauseMs: ms));
+        continue;
+      }
+      for (final s in splitSentences(piece)) {
+        for (final c in _limit(s)) {
+          out.add(Segment(pi, c));
+        }
       }
     }
     pi++;
   }
+  return out;
+}
+
+/// A pause tag anywhere in the text: [pause 2s], [pause 500ms], [pause 1.5].
+final pauseTag = RegExp(
+  r'\[\s*pause\s*([\d.]+)\s*(ms|s)?\s*\]',
+  caseSensitive: false,
+);
+
+/// The pause a tag asks for, in milliseconds (0–30 s).
+int pauseMsOf(Match m) {
+  final n = double.tryParse(m.group(1)!) ?? 0;
+  final ms = m.group(2)?.toLowerCase() == 'ms' ? n : n * 1000;
+  return ms.round().clamp(0, 30000);
+}
+
+/// [s] cut at its pause tags: text pieces (pause 0) and pauses (empty text),
+/// in order. Blank pieces are dropped.
+List<(String, int)> splitPauses(String s) {
+  final out = <(String, int)>[];
+  var start = 0;
+  void text(String t) {
+    final c = t.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (c.isNotEmpty) out.add((c, 0));
+  }
+
+  for (final m in pauseTag.allMatches(s)) {
+    text(s.substring(start, m.start));
+    final ms = pauseMsOf(m);
+    if (ms > 0) out.add(('', ms));
+    start = m.end;
+  }
+  text(s.substring(start));
   return out;
 }
 
@@ -111,18 +150,24 @@ List<Segment> _castSegments(List<CastLine> lines) {
       continue;
     }
     var first = true;
-    for (final s in splitSentences(l.text.replaceAll(RegExp(r'\s+'), ' '))) {
-      for (final c in _limit(s)) {
-        out.add(
-          Segment(
-            pi,
-            c,
-            voiceId: l.voiceId,
-            delivery: l.delivery,
-            label: first ? l.speaker : null,
-          ),
-        );
-        first = false;
+    for (final (piece, ms) in splitPauses(l.text)) {
+      if (ms > 0) {
+        out.add(Segment(pi, '', pauseMs: ms));
+        continue;
+      }
+      for (final s in splitSentences(piece)) {
+        for (final c in _limit(s)) {
+          out.add(
+            Segment(
+              pi,
+              c,
+              voiceId: l.voiceId,
+              delivery: l.delivery,
+              label: first ? l.speaker : null,
+            ),
+          );
+          first = false;
+        }
       }
     }
   }

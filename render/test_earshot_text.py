@@ -31,6 +31,17 @@ def test_descriptions_and_pauses():
     assert segs[-1].pause_ms == 1000 and segs[-1].text == ""
 
 
+def test_inline_pauses():
+    doc = "---\nvoices:\n  Narrator: George\n  Jo: Heart\n---\nJo: Yeah, well. [pause 2s] Fine.\n[pause 500ms] The door shut.\n"
+    segs = et.segment(doc)
+    assert [s.text for s in segs] == ["Yeah, well.", "", "Fine.", "", "The door shut."]
+    assert segs[1].pause_ms == 2000 and segs[3].pause_ms == 500
+    assert segs[0].label == "Jo" and segs[2].label is None and segs[2].speaker == "Jo"
+    assert segs[4].speaker is None
+    plain = et.segment("First part. [Pause 1.5s] Second part.\n\n[pause 3s]")
+    assert [(s.text, s.pause_ms) for s in plain] == [("First part.", 0), ("", 1500), ("Second part.", 0), ("", 3000)]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

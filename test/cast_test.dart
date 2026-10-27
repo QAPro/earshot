@@ -77,4 +77,38 @@ void main() {
     expect(lines.length, greaterThan(5));
     expect(lines.where((l) => l.speaker != null && l.voiceId == null), isEmpty);
   });
+
+  test('pause tags work inside a line and in plain documents', () {
+    const doc = '''---
+voices:
+  Narrator: George
+  Jo: Heart
+---
+Jo: Yeah, well. [pause 2s] Fine.
+[pause 500ms] The door shut.''';
+    final segs = segment(doc);
+    expect(segs.map((s) => s.text).toList(), [
+      'Yeah, well.',
+      '',
+      'Fine.',
+      '',
+      'The door shut.',
+    ]);
+    expect(segs[1].pauseMs, 2000);
+    expect(segs[3].pauseMs, 500);
+    expect(segs[0].label, 'Jo');
+    expect(segs[2].label, isNull); // label once per line
+    expect(segs[2].voiceId, 'af_heart'); // still Jo after the pause
+    expect(segs[4].label, isNull); // narrator, not a delivery note
+
+    final plain = segment(
+      'First part. [Pause 1.5s] Second part.\n\n[pause 3s]',
+    );
+    expect(plain.map((s) => (s.text, s.pauseMs)).toList(), [
+      ('First part.', 0),
+      ('', 1500),
+      ('Second part.', 0),
+      ('', 3000),
+    ]);
+  });
 }

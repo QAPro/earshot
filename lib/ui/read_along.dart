@@ -273,7 +273,10 @@ class _ParagraphTextState extends State<_ParagraphText> {
             children: [
               for (var k = 0; k < widget.para.texts.length; k++)
                 TextSpan(
-                  text: '${widget.para.texts[k]} ',
+                  // A pause inside a paragraph shows as a short gap.
+                  text: widget.para.texts[k].isEmpty
+                      ? '· · · '
+                      : '${widget.para.texts[k]} ',
                   style: k == _active ? hl : base,
                   recognizer: _recognizers[k],
                 ),
