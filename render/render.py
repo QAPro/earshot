@@ -195,7 +195,7 @@ def render(path: str, s: dict) -> None:
         clip[i] = out
         if engine == "qwen":
             jobs.append({"out": out, "text": spoken, "instruct": qwen_instruct(seg, s),
-                         "seed_key": seg.label or "narrator"})
+                         "seed_key": seg.speaker or "narrator"})
         else:
             ex, cfg = chatterbox_tuning(s["style"], seg.delivery)
             jobs.append({"out": out, "text": spoken, "voice": seg.voice or voice,
@@ -206,7 +206,8 @@ def render(path: str, s: dict) -> None:
     refs: dict[str, str] = {}
     if match:
         for i, seg in enumerate(segs):
-            k = seg.label or "narrator"
+            # Every sentence of a line belongs to its speaker, not just the first.
+            k = seg.speaker or "narrator"
             if i not in clip or k in refs:
                 continue
             refs[k] = os.path.join(work, f"ref_{re.sub(r'[^A-Za-z0-9]+', '_', k)[:30]}.wav")
@@ -218,8 +219,11 @@ def render(path: str, s: dict) -> None:
         vc_jobs = []
         for i, seg in enumerate(segs):
             if i in clip:
-                matched = clip[i].replace(".wav", ".matched.wav")
-                vc_jobs.append({"src": clip[i], "ref": refs[seg.label or "narrator"], "out": matched})
+                k = seg.speaker or "narrator"
+                # The speaker is in the name, so a change of speaker re-matches.
+                slug = re.sub(r"[^A-Za-z0-9]+", "_", k)[:30]
+                matched = clip[i].replace(".wav", f".matched-{slug}.wav")
+                vc_jobs.append({"src": clip[i], "ref": refs[k], "out": matched})
                 clip[i] = matched
         run_engine("chatterbox-vc", vc_jobs, work)
 
@@ -254,7 +258,9 @@ def render(path: str, s: dict) -> None:
     out_dir = s["output_dir"]
     os.makedirs(out_dir, exist_ok=True)
     mp3 = os.path.join(out_dir, f"{name}.mp3")
-    sf.write(mp3, audio, SR, format="MP3")
+    # Constant bitrate: players seek to an exact time, so the highlighted
+    # sentence stays in step after a jump (variable bitrate drifted).
+    sf.write(mp3, audio, SR, format="MP3", bitrate_mode="CONSTANT", compression_level=0.5)
     script = {
         "format": "earshot-audio", "version": 1, "title": name, "source": os.path.basename(path),
         "engine": engine, "voice": None if cast else s["voice"], "style": None if cast else s["style"],

@@ -58,6 +58,7 @@ class ReaderHandler extends BaseAudioHandler {
   /// follows the play position instead of generating speech.
   bool get _recorded => doc?.recorded ?? false;
   String? _loadedRecording;
+  bool _seeking = false;
 
   int _run = 0; // bumps on every stop/jump so stale loops exit
   Completer<void>? _segmentDone;
@@ -215,7 +216,19 @@ class ReaderHandler extends BaseAudioHandler {
   Future<void> _ensureRecordingLoaded() async {
     final path = doc!.audioPath!;
     if (_loadedRecording == path) return;
-    await _player.setFilePath(path);
+    await _player.setAudioSource(
+      ProgressiveAudioSource(
+        Uri.file(path),
+        // Exact seeking in MP3s on Android, even variable-bitrate ones made
+        // by older renderers (seek-table estimates put the highlight out of
+        // step with the audio after a jump).
+        options: const ProgressiveAudioSourceOptions(
+          androidExtractorOptions: AndroidExtractorOptions(
+            mp3Flags: AndroidExtractorOptions.flagMp3EnableIndexSeeking,
+          ),
+        ),
+      ),
+    );
     _loadedRecording = path;
   }
 
@@ -225,7 +238,14 @@ class ReaderHandler extends BaseAudioHandler {
       final seg = segments[index.value];
       final pos = _player.position.inMilliseconds;
       final inside = pos >= (seg.startMs ?? 0) && pos < (seg.endMs ?? 0);
-      if (!inside) await _player.seek(Duration(milliseconds: seg.startMs ?? 0));
+      if (!inside) {
+        _seeking = true;
+        try {
+          await _player.seek(Duration(milliseconds: seg.startMs ?? 0));
+        } finally {
+          _seeking = false;
+        }
+      }
       await _player.setSpeed(settings.speed);
       unawaited(_player.play());
     } catch (e) {
@@ -236,6 +256,7 @@ class ReaderHandler extends BaseAudioHandler {
   }
 
   Future<void> _seekToCurrent() async {
+    _seeking = true;
     try {
       await _ensureRecordingLoaded();
       await _player.seek(
@@ -243,12 +264,16 @@ class ReaderHandler extends BaseAudioHandler {
       );
     } catch (e) {
       error.value = 'Playback failed: $e';
+    } finally {
+      _seeking = false;
     }
   }
 
   /// Moves the highlight to the sentence being heard.
   void _onPosition(Duration position) {
-    if (!_recorded || !playing.value || segments.isEmpty) return;
+    // While a jump is under way the player still reports the old position;
+    // following it would drag the highlight back.
+    if (!_recorded || !playing.value || segments.isEmpty || _seeking) return;
     final ms = position.inMilliseconds;
     var lo = 0, hi = segments.length - 1;
     while (lo < hi) {

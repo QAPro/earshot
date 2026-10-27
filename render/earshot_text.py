@@ -356,7 +356,8 @@ def for_speech(s: str) -> str:
 class Segment:
     paragraph: int
     text: str
-    label: str | None = None
+    label: str | None = None  # shown once, on a line's first sentence
+    speaker: str | None = None  # on every sentence of the line
     voice: str | None = None
     description: str | None = None
     delivery: str = ""
@@ -376,7 +377,8 @@ def segment(text: str) -> list[Segment]:
             first = True
             for s in split_sentences(re.sub(r"\s+", " ", l.text)):
                 for c in limit(s):
-                    out.append(Segment(pi, c, label=l.speaker if first else None, voice=l.voice,
+                    out.append(Segment(pi, c, label=l.speaker if first else None, speaker=l.speaker,
+                                       voice=l.voice,
                                        description=l.description, delivery=l.delivery, cast=True))
                     first = False
         return out

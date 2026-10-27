@@ -28,6 +28,9 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - name: Renderer text rules
+        working-directory: render
+        run: python3 test_earshot_text.py
 
   android:
     needs: test
