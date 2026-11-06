@@ -11,6 +11,10 @@ For each document it writes, into the output folder:
     <name>.earshot   open in Earshot: the audio plus the text, with sentence
                      timings, so the reader highlights and skips as usual
 
+With --clips (or the "Earshot Clips" shortcut) it also writes a folder of
+one-speaker WAV clips, one per speaker turn, for lip-sync video, plus
+clips.csv listing each clip's speaker, length, lines and text.
+
 Settings: settings.json next to the output folder (created on first run).
 Interrupted? Run it again on the same file; finished lines are kept.
 """
@@ -40,13 +44,18 @@ DEFAULTS = {
     "_help": "Edit and save; used for every document. voice: any Earshot voice name (Michael, Heart, "
              "George...). style: calm | storyteller | dramatic. narrator: how Qwen should sound when it "
              "narrates (cast documents without a Narrator description). output_dir: where results go. "
-             "match_voices: true keeps each cast character's voice the same on every line.",
+             "match_voices: true keeps each cast character's voice the same on every line. "
+             "clip_* (Earshot Clips shortcut): longest clip in seconds (0 = no limit), silence added "
+             "at each end, and whether back-to-back lines by the same speaker join into one clip.",
     "voice": "Michael",
     "style": "storyteller",
     "narrator": "A warm, expressive audiobook narrator with a clear voice, measured and engaging, "
                 "bringing the text to life without overacting",
     "output_dir": os.path.join(BASE, "output"),
     "match_voices": True,
+    "clip_max_seconds": 5,
+    "clip_pad_seconds": 0.3,
+    "clip_merge": True,
 }
 # Read by each character once to fix their voice; every line is then matched to it.
 REF_TEXT = ("I'll tell you exactly what happened, from the beginning, and I'll try to "
@@ -72,7 +81,11 @@ def settings() -> dict:
             json.dump(DEFAULTS, f, indent=2)
         print(f"Created settings: {path}")
     with open(path, encoding="utf-8") as f:
-        s = {**DEFAULTS, **json.load(f)}
+        mine = json.load(f)
+    s = {**DEFAULTS, **mine}
+    if set(DEFAULTS) - set(mine):  # new settings since it was made: add them, keep yours
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({**s, "_help": DEFAULTS["_help"]}, f, indent=2)
     if not et.find_voice(s["voice"]):
         print(f"Unknown voice '{s['voice']}' in settings.json; using Michael.")
         s["voice"] = "Michael"
@@ -177,7 +190,7 @@ def content_key(job: dict) -> str:
     return hashlib.sha1(json.dumps({k: v for k, v in sorted(job.items()) if k != "out"}).encode()).hexdigest()[:10]
 
 
-def render(path: str, s: dict) -> None:
+def render(path: str, s: dict, clips: bool = False) -> None:
     name = os.path.splitext(os.path.basename(path))[0]
     print(f"\n=== {name}", flush=True)
     text = et.extract_text(path)
@@ -244,12 +257,14 @@ def render(path: str, s: dict) -> None:
         parts.append(x)
         pos += len(x)
 
+    spoken: dict[int, np.ndarray] = {}
     for i, seg in enumerate(segs):
         start = pos
         if seg.pause_ms:
             add(np.zeros(int(SR * seg.pause_ms / 1000), dtype="float32"))
         elif i in clip:
-            add(trim(load(clip[i])))
+            spoken[i] = trim(load(clip[i]))
+            add(spoken[i])
         end = pos
         nxt = segs[i + 1] if i + 1 < len(segs) else None
         if nxt is not None:
@@ -262,7 +277,8 @@ def render(path: str, s: dict) -> None:
                          "start": int(start * 1000 / SR), "end": int(end * 1000 / SR)})
     audio = np.concatenate(parts) if parts else np.zeros(SR, dtype="float32")
     peak = float(np.abs(audio).max()) or 1.0
-    audio = (audio * min(0.9 / peak, 4.0)).astype("float32")
+    gain = min(0.9 / peak, 4.0)
+    audio = (audio * gain).astype("float32")
 
     out_dir = s["output_dir"]
     os.makedirs(out_dir, exist_ok=True)
@@ -282,11 +298,61 @@ def render(path: str, s: dict) -> None:
         z.writestr("script.json", json.dumps(script, ensure_ascii=False, indent=1))
     mins = len(audio) / SR / 60
     print(f"Done: {mins:.1f} minutes of audio.\n  {pkg}\n  {mp3}", flush=True)
+    if clips:
+        export_clips(name, segs, spoken, gain, cast, s)
+
+
+def export_clips(name: str, segs: list, spoken: dict, gain: float, cast: bool, s: dict) -> None:
+    """One WAV per speaker turn, for lip-sync video (e.g. Wan S2V), plus clips.csv."""
+    import csv
+
+    pad = int(SR * float(s["clip_pad_seconds"]))
+    max_ms = int(float(s["clip_max_seconds"]) * 1000)
+    plan = et.plan_clips(
+        segs, {i: int(len(x) * 1000 / SR) for i, x in spoken.items() if len(x)},
+        max_ms=max_ms, merge=bool(s["clip_merge"]), sentence_gap_ms=GAP_SENTENCE_MS,
+        line_gap_ms=GAP_CAST_LINE_MS if cast else GAP_PARAGRAPH_MS, pad_ms=int(pad * 1000 / SR))
+    folder = os.path.join(s["output_dir"], f"{name} clips")
+    os.makedirs(folder, exist_ok=True)
+    for old in os.listdir(folder):  # this folder is ours: clear the last run
+        if old.endswith(".wav") or old == "clips.csv":
+            os.remove(os.path.join(folder, old))
+    rows, long = [], 0
+    for n, c in enumerate(plan, 1):
+        parts = [np.zeros(pad, dtype="float32")]
+        for k, i in enumerate(c.parts):
+            if k:
+                same = segs[c.parts[k - 1]].paragraph == segs[i].paragraph
+                gap = GAP_SENTENCE_MS if same else (GAP_CAST_LINE_MS if cast else GAP_PARAGRAPH_MS)
+                parts.append(np.zeros(int(SR * gap / 1000), dtype="float32"))
+            seg = segs[i]
+            parts.append(np.zeros(int(SR * seg.pause_ms / 1000), dtype="float32")
+                         if seg.pause_ms else spoken[i])
+        parts.append(np.zeros(pad, dtype="float32"))
+        x = (np.concatenate(parts) * gain).clip(-1, 1).astype("float32")
+        file = f"{n:03d}_{re.sub(r'[^A-Za-z0-9]+', '_', c.speaker).strip('_')[:30] or 'Narrator'}.wav"
+        sf.write(os.path.join(folder, file), x, SR, subtype="PCM_16")
+        secs = len(x) / SR
+        over = bool(max_ms) and secs * 1000 > max_ms
+        long += over
+        rows.append({"clip": n, "file": file, "speaker": c.speaker, "seconds": f"{secs:.2f}",
+                     "lines": " ".join(str(p + 1) for p in c.lines(segs)),
+                     "note": "longer than the limit: one long sentence" if over else "",
+                     "text": c.text(segs)})
+    with open(os.path.join(folder, "clips.csv"), "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]) if rows else ["clip"])
+        w.writeheader()
+        w.writerows(rows)
+    print(f"Clips: {len(rows)} WAV files in {folder}" +
+          (f" ({long} over {max_ms / 1000:g} s: a single sentence that long; see clips.csv)" if long else ""),
+          flush=True)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Turn documents into storyteller audio for Earshot.")
     ap.add_argument("files", nargs="*")
+    ap.add_argument("--clips", action="store_true",
+                    help="also write one WAV per speaker turn (for lip-sync video), plus clips.csv")
     args = ap.parse_args()
     if not args.files:
         print("Drag one or more documents (PDF, Word, text, Markdown) onto the Earshot Render shortcut.")
@@ -298,7 +364,7 @@ def main() -> None:
             print(f"\nSkipping {os.path.basename(f)}: not a PDF, Word, text or Markdown file.")
             continue
         try:
-            render(f, s)
+            render(f, s, clips=args.clips)
         except (ValueError, OSError) as e:
             print(f"Couldn't convert {os.path.basename(f)}: {e}")
             failed.append(f)

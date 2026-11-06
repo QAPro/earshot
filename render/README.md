@@ -42,6 +42,27 @@ are acted by Qwen3-TTS. Interrupted? Drag the same file on again: finished lines
 | `output_dir` | Where results go, e.g. a Google Drive folder to reach the phone |
 | `match_voices` | `true` (default): each cast character sounds the same on every line (see below) |
 
+## Clips for lip-sync video
+
+Drag a document onto **Earshot Clips** instead of Earshot Render. You get the
+same recording, plus a folder `<name> clips` in the output folder:
+
+- `001_Narrator.wav`, `002_Jo.wav`, … — one speaker per clip, in script order.
+  WAV, 24 kHz mono, uncompressed, voice-matched like the recording.
+- `clips.csv` — each clip's speaker, length, script line numbers and text.
+
+How the clips are cut (change these in `settings.json`):
+
+| Setting | Default | What it does |
+|---|---|---|
+| `clip_max_seconds` | 5 | Cut at a sentence break before a clip runs longer. 0 = no limit. A single sentence longer than this stays whole and is flagged in `clips.csv`. |
+| `clip_pad_seconds` | 0.3 | Silence at each end, so the mouth settles before and after. |
+| `clip_merge` | true | Back-to-back lines by the same speaker join into one clip. |
+
+A clip never mixes speakers. A `[pause]` on a line of its own always ends a
+clip; a pause inside a line stays in the clip as silence. Re-running replaces
+the folder's clips.
+
 ## How cast voices stay consistent
 
 Qwen3-TTS builds a voice from the character description each time, so the same character

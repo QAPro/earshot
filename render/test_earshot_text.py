@@ -48,6 +48,24 @@ def test_pause_spellings():
         assert [(x.text, x.pause_ms) for x in segs] == [("Before.", 0), ("", ms), ("After.", 0)], tag
 
 
+def test_plan_clips():
+    doc = ("---\nvoices:\n  Narrator: George\n  Jo: Heart\n  CV: Michael\n---\n"
+           "Jo: One. Two.\nJo: Three.\nCV: Four. [pause 1s] Five.\n[pause 2s]\nCV: Six.\nThe end.\n")
+    segs = et.segment(doc)
+    spoken = {i: 1000 for i, x in enumerate(segs) if x.text}
+    texts = lambda clips: [(c.speaker, c.text(segs)) for c in clips]
+    # Merged: back-to-back Jo lines join; the pause line splits CV; narrator separate.
+    assert texts(et.plan_clips(segs, spoken)) == [
+        ("Jo", "One. Two. Three."), ("CV", "Four. Five."), ("CV", "Six."), ("Narrator", "The end.")]
+    # Not merged: every line on its own.
+    assert texts(et.plan_clips(segs, spoken, merge=False))[:2] == [("Jo", "One. Two."), ("Jo", "Three.")]
+    # Max length cuts at sentence breaks: 1000 + 250 + 1000 = 2250 > 2000.
+    assert texts(et.plan_clips(segs, spoken, max_ms=2000))[:3] == [("Jo", "One."), ("Jo", "Two."), ("Jo", "Three.")]
+    # The inline pause stays inside CV's clip.
+    cv = et.plan_clips(segs, spoken)[1]
+    assert any(segs[i].pause_ms == 1000 for i in cv.parts)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

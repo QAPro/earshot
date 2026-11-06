@@ -9,7 +9,7 @@
 # Everything goes in one folder: D:\earshot-render if there is a D: drive,
 # otherwise %LOCALAPPDATA%\earshot-render. Set EARSHOT_RENDER_HOME first to
 # choose another place. Nothing is added to PATH or the registry; to remove it,
-# delete that folder and the "Earshot Render" desktop shortcut.
+# delete that folder and the "Earshot Render" and "Earshot Clips" desktop shortcuts.
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'   # much faster downloads
@@ -116,6 +116,18 @@ $sh.WorkingDirectory = $Base
 $sh.Description = 'Drop a document here to turn it into storyteller audio for Earshot'
 $sh.Save()
 Write-Host "  'Earshot Render' is on your desktop."
+
+# Same, plus one WAV per speaker turn for lip-sync video.
+$ClipsCmd = Join-Path $Base 'earshot-clips.cmd'
+(Get-Content $Cmd) -replace 'render\.py" %\*', 'render.py" --clips %*' -replace 'Earshot Render', 'Earshot Clips' |
+    Set-Content -Encoding ASCII $ClipsCmd
+$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Earshot Clips.lnk'
+$sh = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+$sh.TargetPath = $ClipsCmd
+$sh.WorkingDirectory = $Base
+$sh.Description = 'Drop a document here for its audio plus one clip per speaker turn (for lip-sync video)'
+$sh.Save()
+Write-Host "  'Earshot Clips' is on your desktop too (same, plus one WAV per speaker turn)."
 
 Step 'Done'
 Write-Host "Two test recordings are in $Base\output (check-qwen.mp3, check-chatterbox.mp3)." -ForegroundColor Green

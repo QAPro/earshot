@@ -429,3 +429,80 @@ def segment(text: str) -> list[Segment]:
                 for c in limit(s):
                     out.append(Segment(pi, c))
     return out
+
+
+# ------------------------------------------------------------------ clips
+
+
+@dataclass
+class Clip:
+    speaker: str
+    parts: list[int]  # segment indices, in order (sentences and inline pauses)
+
+    def lines(self, segs: list[Segment]) -> list[int]:
+        return sorted({segs[i].paragraph for i in self.parts})
+
+    def text(self, segs: list[Segment]) -> str:
+        return " ".join(segs[i].text for i in self.parts if segs[i].text)
+
+
+def plan_clips(segs: list[Segment], durations_ms: dict[int, int], *, max_ms: int = 0,
+               merge: bool = True, sentence_gap_ms: int = 250, line_gap_ms: int = 250,
+               pad_ms: int = 0) -> list[Clip]:
+    """Groups a document's sentences into one-speaker clips (for lip-sync video).
+
+    - A clip never mixes speakers. A new line starts a new clip unless `merge`
+      is on and it's the same speaker straight after.
+    - A pause on a line of its own always ends the clip; a pause inside a
+      line stays in it as silence.
+    - With `max_ms`, a clip is cut at a sentence break before it runs longer.
+      A single sentence longer than that stays whole.
+    `durations_ms` holds each spoken segment's audio length; segments missing
+    from it (nothing to say) are skipped.
+    """
+    clips: list[Clip] = []
+    cur: Clip | None = None
+    cur_ms = 0
+    pause_lines = {s.paragraph for s in segs if s.pause_ms} - {s.paragraph for s in segs if s.text}
+
+    def length_with(i: int) -> int:
+        if cur is None or not cur.parts:
+            return 2 * pad_ms + (segs[i].pause_ms or durations_ms.get(i, 0))
+        prev = segs[cur.parts[-1]]
+        gap = sentence_gap_ms if prev.paragraph == segs[i].paragraph else line_gap_ms
+        return cur_ms + gap + (segs[i].pause_ms or durations_ms.get(i, 0))
+
+    def close():
+        nonlocal cur, cur_ms
+        if cur is not None:
+            while cur.parts and segs[cur.parts[-1]].pause_ms:  # no trailing silence
+                cur.parts.pop()
+            if cur.parts:
+                clips.append(cur)
+        cur, cur_ms = None, 0
+
+    for i, seg in enumerate(segs):
+        if seg.paragraph in pause_lines:
+            close()
+            continue
+        if seg.pause_ms:
+            if cur is not None and cur.parts and segs[cur.parts[-1]].paragraph == seg.paragraph:
+                cur_ms = length_with(i)
+                cur.parts.append(i)
+            continue
+        if i not in durations_ms:
+            continue
+        who = seg.speaker or "Narrator"
+        if cur is not None and cur.parts:
+            last = segs[cur.parts[-1]]
+            same_line = last.paragraph == seg.paragraph
+            if who != cur.speaker or (not same_line and not merge):
+                close()
+            elif max_ms and length_with(i) > max_ms:
+                close()
+        if cur is None:
+            cur = Clip(who, [])
+        cur_ms = length_with(i)
+        cur.parts.append(i)
+    close()
+    return clips
